@@ -10,22 +10,25 @@ Alle Inhalte dieses Repositorys unterliegen folgendem Urheberrechtsschutz:
 
 **Copyright © 2026 mugglman. Alle Rechte vorbehalten.**
 
-### Verboten:
+### Verboten
+
 - Kopieren oder Reproduzieren des Codes
 - Veränderung oder Modifizierung
 - Weitergabe oder Verbreitung
 - Kommerzielle Nutzung
 - Verwendung ohne schriftliche Genehmigung
 
-### Erlaubt:
+### Erlaubt
+
 - Ansicht und Einsicht des Codes für Evaluierungszwecke (mit Genehmigung)
 - Lokale Clones für Beitragende (mit Genehmigung)
 
 ## Zukünftige Lizenzentscheidung
 
-Eine definitives Lizenzmodell (Open-Source oder proprietär) wird zu einem späteren Zeitpunkt entschieden.
+Ein definitives Lizenzmodell (Open-Source oder proprietär) wird zu einem späteren Zeitpunkt entschieden.
 
 Mögliche Optionen:
+
 - MIT License
 - Apache 2.0
 - Proprietäre Lizenz

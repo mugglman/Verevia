@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitsproblem melden
+    url: https://github.com/mugglman/Verevia/security/advisories/new
+    about: Sicherheitsrelevante Probleme bitte nicht als öffentliches Issue melden, siehe SECURITY.md.

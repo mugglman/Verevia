@@ -2,13 +2,13 @@
 
 > Die Plattform für moderne Vereine
 
-**Status:** Vereinüberschreitende Planungs- und Aufbauphase
+**Status:** Frühe Planungs- und Aufbauphase
 
 ---
 
 ## Übersicht
 
-Verevia ist eine modernae, intuitive und mandantenfähige SaaS-Plattform zur Planung, Organisation und Verwaltung aller Abteilungen, Mannschaften und Vereinsabläufe.
+Verevia ist eine moderne, intuitive und mandantenfähige SaaS-Plattform zur Planung, Organisation und Verwaltung aller Abteilungen, Mannschaften und Vereinsabläufe.
 
 Die Plattform richtet sich primär an Vereine und bietet eine zentrale Lösung zur digitalen Vernetzung von Mitgliedern, Trainern, Abteilungsleitern und dem Vereinsvorstand.
 
@@ -16,7 +16,7 @@ Die Plattform richtet sich primär an Vereine und bietet eine zentrale Lösung z
 
 Verevia startet mit dem Schwerpunkt:
 
-```
+```text
 Verein → Fußball → Mannschaften → Turnierplan
 ```
 
@@ -27,12 +27,15 @@ Andere Module werden architektonisch vorbereitet, aber noch nicht technisch impl
 ## Vision & Mission
 
 ### Vision
+
 Verevia ist die zentrale Plattform zur Planung, Organisation und Verwaltung aller Abteilungen, Mannschaften und Vereinsabläufe.
 
 ### Mission
+
 Verevia vereinfacht das Vereinsleben durch eine moderne, intuitive und digitale Plattform, die alle Beteiligten verbindet – vom Mitglied und den Eltern über Trainer und Abteilungsleiter bis zum Vereinsvorstand.
 
 ### Langfristiges Ziel
+
 Verevia soll innerhalb der kommenden zehn Jahre eine führende Vereinsplattform im deutschsprachigen Raum werden und für alle Abteilungen und Mannschaften eines Vereins einen messbaren Mehrwert bieten.
 
 ---
@@ -109,7 +112,7 @@ Verevia soll innerhalb der kommenden zehn Jahre eine führende Vereinsplattform 
 
 ## Verzeichnisstruktur
 
-```
+```text
 Verevia/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
@@ -181,6 +184,7 @@ Verevia/
 ⚠️ **Wichtig**: Dieses Repository enthält derzeit **keine lauffähige Anwendung**.
 
 Es dokumentiert:
+
 - Projektstruktur und Organisation
 - Technische Architektur
 - Marken- und Produktidentität
@@ -188,6 +192,23 @@ Es dokumentiert:
 - Roadmap und Phase
 
 Die eigentliche Entwicklung startet in Phase 1.
+
+---
+
+## Dokumentation
+
+Weiterführende Dokumentation befindet sich im Verzeichnis [`docs/`](./docs):
+
+- [Produktvision](./docs/product/Product-Vision.md)
+- [MVP-Abgrenzung](./docs/product/MVP-Scope.md)
+- [Rollen und Berechtigungen](./docs/product/Roles-and-Permissions.md)
+- [Architektur](./docs/architecture/Architecture.md)
+- [Mandantenfähigkeit](./docs/architecture/Multi-Tenancy.md)
+- [Architekturentscheidungen (ADR)](./docs/architecture/adr/README.md)
+- [Datenbank-Entwurf](./docs/database/Database.md)
+- [Markenidentität](./docs/branding/Brand-Identity.md)
+- [Modulübersicht](./docs/modules/README.md)
+- [Roadmap](./docs/roadmap/Roadmap.md)
 
 ---
 

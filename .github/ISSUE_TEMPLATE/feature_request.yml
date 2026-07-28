@@ -1,0 +1,97 @@
+name: Feature Request
+description: Schlage eine neue Funktion oder Verbesserung für Verevia vor.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für deinen Vorschlag. Bitte gib keine privaten Daten oder Zugangsdaten in diesem Formular an.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem oder Bedarf
+      description: Welches Problem oder welcher Bedarf liegt diesem Vorschlag zugrunde?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Gewünschte Lösung
+      description: Wie stellst du dir eine Lösung vor?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: user-role
+    attributes:
+      label: Betroffene Nutzerrolle
+      options:
+        - Vereinsadministrator
+        - Vorstand
+        - Abteilungsleiter
+        - Jugendleiter
+        - Mannschaftsadministrator
+        - Trainer
+        - Betreuer
+        - Mitglied
+        - Elternteil / Sorgeberechtigter
+        - Gast
+        - Plattformadministration
+        - Sonstige
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Betroffener Bereich
+      options:
+        - Web-Frontend
+        - Backend / API
+        - Admin-Bereich
+        - Dokumentation
+        - Infrastruktur
+        - Sonstiges
+    validations:
+      required: true
+
+  - type: textarea
+    id: business-value
+    attributes:
+      label: Geschäftlicher Mehrwert
+      description: Welchen Nutzen bringt diese Funktion für Vereine oder Nutzer?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priorität
+      options:
+        - Sehr hoch
+        - Hoch
+        - Mittel
+        - Niedrig
+        - Später
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Mögliche Alternativen
+      description: Gibt es alternative Lösungsansätze, die du in Betracht gezogen hast?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: Zusätzliche Informationen
+      description: Weitere Hinweise, Skizzen oder Kontext.
+    validations:
+      required: false
