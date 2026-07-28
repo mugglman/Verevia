@@ -1,0 +1,86 @@
+# Dependencies
+node_modules/
+.pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Next.js
+.next/
+out/
+.next-env.d.ts
+
+# NestJS
+dist/
+.tsbuildinfo
+
+# TypeScript
+*.tsbuildinfo
+*.d.ts.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Build artifacts
+build/
+dist/
+*.tgz
+
+# pnpm
+pnpm-lock.yaml
+
+# Turborepo
+.turbo/
+
+# Docker
+.dockerignore
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+
+# Misc
+.env*.local
+*.swp
+*.vim
+.cache/
+.parcel-cache/
+.eslintcache
+*.orig
+*.bak
+.venv/
+venv/
+env/
+.pytest_cache/
+__pycache__/
+
+# OS
+.DS_Store
+Thumbs.db
+.env.example wird NICHT ignoriert - absichtlich im Repository
