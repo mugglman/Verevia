@@ -1,0 +1,37 @@
+# Lokale Entwicklungsinfrastruktur für Verevia.
+#
+# Nur PostgreSQL — Redis wird bewusst erst ergänzt, wenn es technisch
+# gebraucht wird (z. B. BullMQ ab Phase 3, siehe docs/ARCHITEKTUR_BERICHT.md).
+# apps/web und apps/api laufen weiterhin lokal über pnpm, nicht in Docker.
+#
+# Dies ist NICHT die Produktions-Infrastruktur (Traefik, verevia-prod/-dev
+# Netzwerke auf dem VPS) — siehe docs/deployment/Deployment.md.
+#
+# Sicherheitsvorgabe (gilt erst recht für Production): PostgreSQL wird
+# niemals auf 0.0.0.0 gebunden. Lokal: nur 127.0.0.1. Auf dem VPS (später,
+# eigenes Arbeitspaket): kein Host-Port-Mapping überhaupt, ausschließlich
+# erreichbar über das interne Docker-Netzwerk (verevia-prod/-dev).
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: verevia-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: verevia
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: verevia
+    ports:
+      # Nur auf localhost binden, nicht auf 0.0.0.0 - auch im lokalen
+      # Dev-Setup nicht versehentlich im lokalen Netzwerk erreichbar machen.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - verevia-dev-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verevia -d verevia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  verevia-dev-postgres-data:

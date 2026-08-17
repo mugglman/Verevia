@@ -1,0 +1,89 @@
+name: Bug Report
+description: Melde einen Fehler oder ein unerwartetes Verhalten im Verevia-Projekt.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke, dass du dir die Zeit nimmst, einen Fehler zu melden.
+        Bitte gib keine privaten Daten oder Zugangsdaten in diesem Formular an.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Beschreibung
+      description: Beschreibe den Fehler kurz und präzise.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Ist-Verhalten
+      description: Was passiert aktuell?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Soll-Verhalten
+      description: Was hättest du stattdessen erwartet?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduktionsschritte
+      description: Wie kann der Fehler nachvollzogen werden?
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Betroffener Bereich
+      options:
+        - Web-Frontend
+        - Backend / API
+        - Admin-Bereich
+        - Dokumentation
+        - Infrastruktur
+        - Sonstiges
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priorität
+      options:
+        - Sehr hoch
+        - Hoch
+        - Mittel
+        - Niedrig
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Browser oder Endgerät
+      description: Welcher Browser, welches Betriebssystem oder welches Endgerät wurde verwendet?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: Zusätzliche Informationen
+      description: Screenshots, Logs oder weitere Hinweise (bitte keine Zugangsdaten oder privaten Daten einfügen).
+    validations:
+      required: false

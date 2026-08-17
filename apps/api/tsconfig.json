@@ -1,0 +1,9 @@
+{
+  "extends": "@verevia/config/typescript/nestjs.json",
+  "compilerOptions": {
+    "baseUrl": "./",
+    "sourceMap": true
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

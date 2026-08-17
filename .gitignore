@@ -1,0 +1,99 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Next.js
+.next/
+out/
+.next-env.d.ts
+
+# NestJS
+dist/
+.tsbuildinfo
+
+# TypeScript
+*.tsbuildinfo
+*.d.ts.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Environment (alle .env*-Varianten außer .env.example, siehe Ausnahme unten)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Lokale Datenbanken (z. B. SQLite bei ad-hoc-Spikes) - Produktivdaten laufen ausschließlich über PostgreSQL
+*.db
+*.sqlite
+*.sqlite3
+
+# Build artifacts
+build/
+dist/
+*.tgz
+
+# pnpm-lock.yaml wird bewusst NICHT ignoriert (reproduzierbare Installationen, siehe CI)
+
+# Turborepo
+.turbo/
+
+# Docker
+.dockerignore
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+
+# Misc
+.env*.local
+*.swp
+*.vim
+.cache/
+.parcel-cache/
+.eslintcache
+*.orig
+*.bak
+.venv/
+venv/
+env/
+.pytest_cache/
+__pycache__/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# .env.example wird NICHT ignoriert - absichtlich im Repository (siehe Ausnahme oben im Abschnitt "Environment")

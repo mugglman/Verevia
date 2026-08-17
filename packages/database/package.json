@@ -1,0 +1,29 @@
+{
+  "name": "@verevia/database",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "test": "echo \"no unit tests yet in @verevia/database\"",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "@verevia/config": "workspace:*",
+    "eslint": "^9.18.0",
+    "prisma": "6.19.3",
+    "typescript": "5.9.3"
+  }
+}
