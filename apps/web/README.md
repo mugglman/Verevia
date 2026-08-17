@@ -8,7 +8,17 @@ Dieses Verzeichnis enthält perspektivisch die Hauptanwendung für Vereine, Mitg
 
 ## Status
 
-Es ist noch keine lauffähige Anwendung vorhanden. Dieses Verzeichnis dient aktuell als struktureller Platzhalter für die technische Umsetzung ab Phase 1 der [Roadmap](../../docs/roadmap/Roadmap.md).
+Technisches Skeleton (Phase 1): Next.js 16 App Router, TypeScript, Tailwind CSS 4, ESLint. Minimale technische Startseite ("System operational"), keine fachlichen Verevia-Features. Siehe [DEVELOPMENT.md](../../docs/DEVELOPMENT.md) für lokale Entwicklung.
+
+## Befehle (aus dem Repo-Root via Turborepo)
+
+```
+pnpm dev      # Next.js Dev-Server (Turbopack)
+pnpm build    # Next.js Production-Build
+pnpm lint     # ESLint
+pnpm typecheck
+pnpm test     # Vitest
+```
 
 ## Bezug
 

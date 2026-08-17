@@ -14,3 +14,8 @@ Jede wesentliche architektonische Entscheidung wird als eigenes ADR-Dokument fes
 ## Vorhandene ADRs
 
 - [0001 – Modularer Monolith](./0001-modular-monolith.md)
+- [0002 – Authentication Strategy](./0002-authentication-strategy.md) — ACCEPTED
+- [0003 – Identity Model: Account/Person-Trennung](./0003-identity-account-person-model.md) — ACCEPTED
+- [0004 – Scoped RBAC via RoleAssignment](./0004-scoped-rbac-role-assignment.md) — ACCEPTED
+- [0005 – Minderjährigen-/Guardian-Modell](./0005-minor-guardian-relationship-model.md) — ACCEPTED
+- [0006 – Multi-Tenant Authorization / RLS Request Context](./0006-multi-tenant-rls-request-context.md) — ACCEPTED

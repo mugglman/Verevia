@@ -1,6 +1,8 @@
 # Datenbank
 
 > Status: Fachlicher Entwurf. Es existiert noch **kein** endgültiges Prisma-Schema und keine Datenbankmigration. Dieses Dokument beschreibt die fachlichen Entitäten und ihre Beziehungen als Grundlage für die spätere technische Umsetzung.
+>
+> **Synchronisiert am 2026-08-17** mit den Entscheidungen aus [AUTH_IDENTITY_RBAC_ARCHITEKTUR.md](../AUTH_IDENTITY_RBAC_ARCHITEKTUR.md) und [ARCHITEKTUR_FINALISIERUNG.md](../ARCHITEKTUR_FINALISIERUNG.md): `Membership` ist kein Rollenträger mehr, Rollen sind scope-basiert (`RoleAssignment`), Eltern-Kind-Beziehungen sind ein eigenständiges Konzept (`PersonRelationship`), Plattformrollen sind von Vereinsrollen technisch getrennt (`PlatformRoleAssignment`). Details und Begründung siehe dort.
 
 ## Zweck
 
@@ -11,16 +13,18 @@ Dieses Dokument beschreibt den fachlichen Entwurf des Datenmodells von Verevia. 
 | Entität | Beschreibung |
 |---|---|
 | Tenant (Verein) | Der Mandant. Jeder Verein ist ein eigener Tenant. |
-| Department (Abteilung) | Eine Abteilung innerhalb eines Vereins (z. B. Fußball). Gehört zu genau einem Tenant. |
+| Sport (Sportart) | Plattformweite, nicht mandantenbezogene Stammdatentabelle (Fußball, Tennis, Stockschützen, …). Wird von `Department` referenziert. |
+| Department (Abteilung) | Eine Abteilung innerhalb eines Vereins (z. B. Fußball), referenziert genau eine `Sport`. Gehört zu genau einem Tenant. |
 | Team (Mannschaft) | Eine Mannschaft innerhalb einer Abteilung. Gehört zu einem Verein oder ist einer Spielgemeinschaft zugeordnet. |
-| User | Ein technischer Benutzeraccount. Kann mehreren Vereinen über `Membership` angehören. |
-| Membership | Verknüpfung zwischen `User` und `Tenant`, Träger der Rollenzuordnung. |
-| Role | Eine Rolle innerhalb eines Vereins (z. B. Trainer, Vorstand). |
+| User | Ein technischer Login-Account. **Nicht** mandantenbezogen, enthält ausschließlich Auth-relevante Daten (E-Mail, Passwort-Hash, Verifizierungsstatus). Kann über `Membership` mit `Person`-Datensätzen in mehreren Vereinen verknüpft sein. Existiert unabhängig davon, ob eine Person tatsächlich einen Account hat. |
+| Person (Mitglied) | Eine natürliche Person als Vereinsmitglied, **mandantenbezogen** (`tenantId` Pflichtfeld), unabhängig davon, ob sie einen `User`-Account besitzt. Trägerin aller fachlichen Verknüpfungen (Rollen, Beziehungen, Anwesenheit). |
+| Membership | Reine Verknüpfung zwischen `User` (Login) und `Person` (Vereinsmitglied) — **kein Rollenträger**. Bedeutet "dieser Login-Account ist diese Person". Rollen hängen an `Person`, siehe `RoleAssignment`. |
+| RoleAssignment | Verknüpft eine `Person` mit einer `Role` in einem konkreten Scope (`TENANT`, `DEPARTMENT` oder `TEAM`, über nullable Fremdschlüssel `departmentId`/`teamId`). Eine Person kann beliebig viele `RoleAssignment`s in unterschiedlichen Scopes gleichzeitig besitzen. |
+| Role | Eine Rolle innerhalb eines Vereins (z. B. Trainer, Vereinsadministrator), einsetzbar über `RoleAssignment` mit beliebigem Scope. |
 | Permission | Eine einzelne Berechtigung, die einer Rolle zugeordnet werden kann. |
-| Person (Mitglied) | Eine natürliche Person als Vereinsmitglied, unabhängig davon, ob sie einen `User`-Account besitzt. |
-| Guardian (Sorgeberechtigter) | Eine Person mit Sorgeberechtigung für ein minderjähriges Mitglied. |
-| GuardianRelation | Verknüpfung zwischen `Guardian` und `Person` (Mitglied). |
-| Coach (Trainer) | Zuordnung einer Person als Trainer zu einer oder mehreren Mannschaften. |
+| PlatformRoleAssignment | Verknüpft einen `User` direkt (ohne Umweg über `Person`/Tenant) mit einer mandantenübergreifenden Plattformrolle (`Platform Owner/Administrator/Support`). |
+| PersonRelationship | Gerichtete, verifizierungspflichtige Beziehung zwischen zwei `Person`-Datensätzen desselben Tenants (z. B. `PARENT`, `LEGAL_GUARDIAN`, `EMERGENCY_CONTACT`). Bildet Eltern-Kind-Beziehungen ab — **keine RBAC-Rolle**, siehe [AUTH_IDENTITY_RBAC_ARCHITEKTUR.md](../AUTH_IDENTITY_RBAC_ARCHITEKTUR.md), Abschnitt 6. Ersetzt die früheren Entitäten `Guardian`/`GuardianRelation`. |
+| Coach (Trainer) | Fachlich abgebildet über `RoleAssignment` mit Rolle `COACH`/`ASSISTANT_COACH` und Scope `TEAM` — keine eigene Entität mehr nötig. |
 | Season (Saison) | Zeitlicher Rahmen, dem Mannschaften, Kalendereinträge und Turniere zugeordnet werden. |
 | Event (Termin) | Ein Kalendereintrag, z. B. Training oder Besprechung. |
 | Attendance (Anwesenheit) | Zu- oder Absage sowie tatsächliche Anwesenheit einer Person zu einem `Event`. |
@@ -43,10 +47,12 @@ Jede mandantenbezogene Entität (unter anderem `Department`, `Team`, `Person`, `
 - Ein `Tenant` hat mehrere `Department`.
 - Ein `Department` hat mehrere `Team`.
 - Ein `Team` gehört zu genau einem `Tenant` oder ist über `JointTeamTenant` mehreren an einer Spielgemeinschaft beteiligten Vereinen zugeordnet.
-- Ein `User` hat mehrere `Membership`-Einträge, jeweils verknüpft mit genau einem `Tenant` und einer oder mehreren `Role`.
+- Ein `User` hat mehrere `Membership`-Einträge, jeweils verknüpft mit genau einer `Person` (die wiederum genau einem `Tenant` zugeordnet ist). `Membership` selbst trägt keine Rolle.
+- Eine `Person` hat mehrere `RoleAssignment`, jeweils mit genau einer `Role` und einem Scope (`TENANT`, `DEPARTMENT` oder `TEAM`).
 - Eine `Role` hat mehrere `Permission`.
-- Eine `Person` kann mehrere `GuardianRelation` zu einem oder mehreren `Guardian` besitzen.
-- Ein `Coach` ist einer `Person` sowie einem oder mehreren `Team` zugeordnet.
+- Ein `User` kann mehrere `PlatformRoleAssignment` besitzen (mandantenübergreifend, unabhängig von `Person`/`Membership`).
+- Eine `Person` kann mehrere `PersonRelationship` als Ursprung (z. B. Elternteil) und/oder als Ziel (z. B. Kind) besitzen — gerichtet, nicht bidirektional gespeichert.
+- Rolle "Trainer" wird als `RoleAssignment` (Rolle `COACH`/`ASSISTANT_COACH`, Scope `TEAM`) abgebildet, nicht als eigene Entität.
 - Ein `Event` gehört zu einem `Team` oder `Department` und optional zu einer `Season` und einem `Venue`.
 - Eine `Attendance` verknüpft eine `Person` mit einem `Event`.
 - Ein `Tournament` hat mehrere `TournamentTeam`, die wiederum mehrere `Match` austragen.
@@ -62,7 +68,7 @@ Sicherheits- und nachvollziehbarkeitsrelevante Änderungen (z. B. Rollenänderun
 
 ## Datenschutz
 
-Das Datenmodell enthält personenbezogene Daten, unter anderem von Minderjährigen (`Person`) und deren Sorgeberechtigten (`Guardian`). Bei der technischen Umsetzung ist zu berücksichtigen:
+Das Datenmodell enthält personenbezogene Daten, unter anderem von Minderjährigen (`Person`) und deren Erziehungsberechtigten (verknüpft über `PersonRelationship`). Bei der technischen Umsetzung ist zu berücksichtigen:
 
 - Datensparsamkeit: Es werden nur Daten erhoben, die für den jeweiligen Zweck erforderlich sind.
 - Zugriffsbeschränkung entsprechend der Rollen- und Rechteverwaltung (siehe [Roles-and-Permissions.md](../product/Roles-and-Permissions.md)).

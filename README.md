@@ -2,7 +2,23 @@
 
 > Die Plattform für moderne Vereine
 
-**Status:** Frühe Planungs- und Aufbauphase
+**Status:** Phase 1 — technisches Skeleton (Monorepo, Next.js, NestJS, Prisma, Docker-Dev-Infrastruktur). Noch keine fachlichen Verevia-Features.
+
+---
+
+## Schnellstart
+
+Voraussetzungen: Node.js ≥ 20 (empfohlen: 22 LTS), pnpm ≥ 9, Docker.
+
+```bash
+pnpm install
+docker compose -f infrastructure/docker/docker-compose.yml up -d   # lokale PostgreSQL
+cp .env.example .env.local                                          # und Werte anpassen
+pnpm --filter @verevia/database db:push                             # Schema gegen lokale DB pushen
+pnpm dev                                                             # apps/web (Port 3000) + apps/api (Port 3001)
+```
+
+Ausführliche Anleitung: [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md).
 
 ---
 
@@ -47,7 +63,7 @@ Verevia soll innerhalb der kommenden zehn Jahre eine führende Vereinsplattform 
 - **API-First**: Alle Funktionen über eine robuste REST-API verfügbar
 - **Mobile-First**: Responsive Design für alle Geräte
 - **Sicherheit**: Datenschutz und Sicherheit von Anfang an
-- **Skalierbar**: Vorbereitet für zukünftige Microservices-Umstellung
+- **Skalierbar**: modularer Monolith mit klaren Modulgrenzen, die eine spätere Auslagerung einzelner Module nicht verbauen (kein Microservices-Ziel für Phase 1, siehe [ADR 0001](./docs/architecture/adr/0001-modular-monolith.md))
 
 ---
 
@@ -90,22 +106,23 @@ Verevia soll innerhalb der kommenden zehn Jahre eine führende Vereinsplattform 
 
 ---
 
-## Technologiestack (Vorläufig)
+## Technologiestack
 
-> **Hinweis**: Der Stack ist vorbereitend gewählt und kann sich noch ändern. Keine Frameworks sind noch installiert.
+> Details und Begründung: [ARCHITEKTUR_BERICHT.md](./docs/ARCHITEKTUR_BERICHT.md), [ARCHITEKTUR_FINALISIERUNG.md](./docs/ARCHITEKTUR_FINALISIERUNG.md).
 
 | Bereich | Technologie | Status |
 |---------|-------------|--------|
-| Monorepo | pnpm Workspaces + Turborepo | Geplant |
-| Web-Frontend | Next.js + TypeScript + React | Geplant |
-| Backend | NestJS + TypeScript | Geplant |
-| Datenbank | PostgreSQL | Geplant |
-| ORM | Prisma | Geplant |
+| Monorepo | pnpm Workspaces (9.15.9) + Turborepo (2.10.10) | Skeleton implementiert |
+| Web-Frontend | Next.js 16 (App Router) + TypeScript + Tailwind CSS 4 | Skeleton implementiert (technische Startseite) |
+| Backend | NestJS 11 + TypeScript | Skeleton implementiert (`GET /health`) |
+| Datenbank | PostgreSQL 17 (lokal via Docker) | Grundkonfiguration (Prisma-Client, noch kein fachliches Schema) |
+| ORM | Prisma **^6.x** (bewusst nicht 7, siehe ADR 0002) | Grundkonfiguration |
+| Authentifizierung | better-auth, selbst gehostet in `apps/api` | Struktur vorbereitet, noch nicht produktiv verdrahtet |
 | Mobile | Progressive Web App | Geplant |
-| Container | Docker | Geplant |
-| Reverse Proxy | Traefik / Caddy | Offen |
-| CI/CD | GitHub Actions | Geplant |
-| Hosting | VPS | Geplant |
+| Container | Docker (lokal: Postgres; Produktion: Traefik/VPS) | Lokale Dev-Infrastruktur implementiert |
+| Reverse Proxy | Traefik (VPS, produktiv bereits im Betrieb) | Entschieden |
+| CI/CD | GitHub Actions (Install → Lint → Typecheck → Test → Build) | Implementiert, noch kein automatisches Deployment |
+| Hosting | Hostinger VPS | Vorbereitet |
 | Monitoring | Uptime Kuma / Grafana | Geplant |
 
 ---
@@ -116,40 +133,53 @@ Verevia soll innerhalb der kommenden zehn Jahre eine führende Vereinsplattform 
 Verevia/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/
-│   ├── workflows/
+│   ├── workflows/      (ci.yml, markdown-check.yml)
 │   ├── CODEOWNERS
 │   └── pull_request_template.md
 ├── apps/
-│   ├── web/           (Next.js Frontend)
-│   ├── api/           (NestJS Backend)
-│   └── admin/         (Admin Dashboard)
+│   ├── web/            (Next.js 16 Frontend, inkl. künftiger Plattform-Admin-Bereich)
+│   └── api/             (NestJS 11 Backend, GET /health)
 ├── packages/
-│   ├── ui/            (Shared UI Components)
-│   ├── types/         (Shared TypeScript Types)
-│   ├── config/        (Shared Config)
-│   └── utils/         (Shared Utilities)
+│   ├── ui/              (Shared UI Components — Grundgerüst)
+│   ├── database/          (Prisma + PostgreSQL — Grundkonfiguration)
+│   ├── auth/               (better-auth — Struktur vorbereitet)
+│   ├── types/               (Shared TypeScript Types — Grundgerüst)
+│   ├── config/               (Shared TypeScript-/ESLint-Konfiguration)
+│   └── utils/                 (Shared Utilities — Platzhalter)
 ├── docs/
-│   ├── architecture/  (Technische Architektur)
-│   ├── branding/      (Markenrichtlinien)
-│   ├── database/      (Datenbankschema)
-│   ├── deployment/    (Deployment-Guide)
-│   ├── modules/       (Modulbeschreibungen)
-│   ├── product/       (Produktdokumentation)
-│   └── roadmap/       (Projekt-Roadmap)
+│   ├── architecture/    (Technische Architektur, ADRs)
+│   ├── branding/          (Markenrichtlinien)
+│   ├── database/            (Datenbankschema)
+│   ├── deployment/            (Deployment-Guide)
+│   ├── modules/                (Modulbeschreibungen)
+│   ├── product/                 (Produktdokumentation)
+│   ├── roadmap/                  (Projekt-Roadmap)
+│   ├── DEVELOPMENT.md              (lokale Entwicklung)
+│   ├── ARCHITEKTUR_BERICHT.md
+│   ├── AUTH_IDENTITY_RBAC_ARCHITEKTUR.md
+│   ├── ARCHITEKTUR_FINALISIERUNG.md
+│   └── PHASE_1_SKELETON_REPORT.md
 ├── infrastructure/
-│   ├── docker/
+│   ├── docker/           (lokale Dev-Infrastruktur: docker-compose.yml)
 │   ├── proxy/
 │   └── scripts/
 ├── .editorconfig
 ├── .env.example
 ├── .gitattributes
 ├── .gitignore
+├── .npmrc
 ├── CHANGELOG.md
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
 ├── LICENSE.md
-└── SECURITY.md
+├── SECURITY.md
+├── package.json
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+└── turbo.json
 ```
+
+**Keine separate `apps/admin`** — Plattformadministration wird als geschützte Routengruppe innerhalb von `apps/web` umgesetzt (siehe [ARCHITEKTUR_BERICHT.md](./docs/ARCHITEKTUR_BERICHT.md), Abschnitt 4).
 
 ---
 
@@ -181,17 +211,9 @@ Verevia/
 
 ## Lokaler Entwicklungsstand
 
-⚠️ **Wichtig**: Dieses Repository enthält derzeit **keine lauffähige Anwendung**.
+Das technische Skeleton ist lauffähig: Next.js-Startseite, NestJS-Health-Endpunkt, Prisma-Grundkonfiguration, lokale PostgreSQL-Infrastruktur, vollständige Quality-Gate-Pipeline (Lint/Typecheck/Test/Build) und CI.
 
-Es dokumentiert:
-
-- Projektstruktur und Organisation
-- Technische Architektur
-- Marken- und Produktidentität
-- Entwicklungsrichtlinien
-- Roadmap und Phase
-
-Die eigentliche Entwicklung startet in Phase 1.
+**Bewusst noch nicht enthalten**: fachliche Verevia-Features (Verein, Mannschaften, Turnierplan, Mitgliederverwaltung), produktive Authentifizierung, das vollständige Datenmodell aus [Database.md](./docs/database/Database.md). Details zum Umfang dieses Arbeitspakets: [PHASE_1_SKELETON_REPORT.md](./docs/PHASE_1_SKELETON_REPORT.md).
 
 ---
 
@@ -209,6 +231,11 @@ Weiterführende Dokumentation befindet sich im Verzeichnis [`docs/`](./docs):
 - [Markenidentität](./docs/branding/Brand-Identity.md)
 - [Modulübersicht](./docs/modules/README.md)
 - [Roadmap](./docs/roadmap/Roadmap.md)
+- [Architektur-Bericht](./docs/ARCHITEKTUR_BERICHT.md)
+- [Auth-, Identity- und RBAC-Architektur](./docs/AUTH_IDENTITY_RBAC_ARCHITEKTUR.md)
+- [Architektur-Finalisierung](./docs/ARCHITEKTUR_FINALISIERUNG.md)
+- [Lokale Entwicklung](./docs/DEVELOPMENT.md)
+- [Phase-1-Skeleton-Bericht](./docs/PHASE_1_SKELETON_REPORT.md)
 
 ---
 

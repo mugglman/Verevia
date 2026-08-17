@@ -1,17 +1,22 @@
 # Mandantenfähigkeit
 
 > Status: Entwurf.
+>
+> **Synchronisiert am 2026-08-17** mit [AUTH_IDENTITY_RBAC_ARCHITEKTUR.md](../AUTH_IDENTITY_RBAC_ARCHITEKTUR.md) und [ARCHITEKTUR_FINALISIERUNG.md](../ARCHITEKTUR_FINALISIERUNG.md).
 
 ## Grundprinzip
 
 Der Mandant in Verevia ist grundsätzlich **der Verein**. Jede vereinsbezogene Information wird eindeutig einem Mandanten zugeordnet.
 
-## Benutzer und Vereine
+## Benutzer, Personen und Vereine
 
-- Ein Benutzer (`User`) kann mehreren Vereinen angehören.
-- Die Zuordnung eines Benutzers zu einem Verein erfolgt über eine Mitgliedschaft (`Membership`).
-- Rollen (`Role`) gelten immer im Kontext eines konkreten Vereins, nicht global über die gesamte Plattform hinweg.
-- Ein Benutzer kann in unterschiedlichen Vereinen unterschiedliche Rollen besitzen.
+- Ein Login-Account (`User`) ist **nicht** mandantenbezogen und enthält ausschließlich Auth-relevante Daten. Ein `User` kann über `Membership` mit `Person`-Datensätzen in mehreren Vereinen verknüpft sein.
+- Eine `Person` (Vereinsmitglied) ist **mandantenbezogen** (`tenantId` Pflichtfeld) und existiert unabhängig davon, ob ein `User`-Account existiert — relevant insbesondere für minderjährige Mitglieder ohne eigenen Login. Details siehe [AUTH_IDENTITY_RBAC_ARCHITEKTUR.md](../AUTH_IDENTITY_RBAC_ARCHITEKTUR.md), Abschnitt 4.
+- `Membership` verknüpft `User` und `Person` ("dieser Login ist diese Person") und ist **kein Rollenträger**.
+- Rollen (`RoleAssignment`) gelten immer im Kontext eines konkreten Vereins und zusätzlich innerhalb eines Scopes (`TENANT`, `DEPARTMENT` oder `TEAM`) — nicht global über die gesamte Plattform hinweg. Eine Rolle auf höherem Scope kaskadiert auf untergeordnete Scopes.
+- Eine Person kann in unterschiedlichen Vereinen unterschiedliche Rollen besitzen, und innerhalb desselben Vereins gleichzeitig mehrere Rollen in unterschiedlichen Scopes (z. B. Trainer einer Jugendmannschaft und Spieler einer anderen Mannschaft).
+- Eltern-Kind-Beziehungen sind **keine Rolle**, sondern eine eigenständige, gerichtete Beziehung (`PersonRelationship`) zwischen zwei `Person`-Datensätzen desselben Tenants.
+- Der aktive Tenant-Kontext eines Requests wird serverseitig gegen die aktiven `Membership`-Einträge des `User` validiert, nie allein aus einem clientseitig übermittelten Wert übernommen. Details zur technischen Umsetzung (`SET LOCAL app.tenant_id`, Prisma-Transaktionskopplung) siehe [ARCHITEKTUR_FINALISIERUNG.md](../ARCHITEKTUR_FINALISIERUNG.md), Abschnitt 7.
 
 ## Datenisolation
 

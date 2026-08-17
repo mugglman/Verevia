@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-.pnpm-lock.yaml
 package-lock.json
 yarn.lock
 
@@ -30,10 +29,13 @@ dist/
 .Trashes
 ehthumbs.db
 
-# Environment
+# Environment (alle .env*-Varianten außer .env.example, siehe Ausnahme unten)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+.env.test
 
 # Logs
 logs/
@@ -46,13 +48,23 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Lokale Datenbanken (z. B. SQLite bei ad-hoc-Spikes) - Produktivdaten laufen ausschließlich über PostgreSQL
+*.db
+*.sqlite
+*.sqlite3
+
 # Build artifacts
 build/
 dist/
 *.tgz
 
-# pnpm
-pnpm-lock.yaml
+# pnpm-lock.yaml wird bewusst NICHT ignoriert (reproduzierbare Installationen, siehe CI)
 
 # Turborepo
 .turbo/
@@ -83,4 +95,5 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
-.env.example wird NICHT ignoriert - absichtlich im Repository
+
+# .env.example wird NICHT ignoriert - absichtlich im Repository (siehe Ausnahme oben im Abschnitt "Environment")

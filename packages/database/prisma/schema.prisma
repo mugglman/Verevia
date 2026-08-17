@@ -1,0 +1,25 @@
+// Verevia — Prisma-Grundkonfiguration (Phase 1 Skeleton)
+//
+// WICHTIG: Dies ist bewusst noch NICHT das fachliche Datenmodell aus
+// docs/database/Database.md. Tenant, Person, Membership, RoleAssignment,
+// PersonRelationship, Tournament etc. folgen in einem eigenen
+// Arbeitspaket. Prisma ist absichtlich auf ^6.x gepinnt, siehe
+// docs/architecture/adr/0002-authentication-strategy.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Platzhalter-Modell, um die Prisma-Pipeline (generate/db push/Client)
+/// technisch zu verifizieren, ohne dem fachlichen Datenmodell vorzugreifen.
+model HealthCheck {
+  id        String   @id @default(uuid())
+  checkedAt DateTime @default(now())
+
+  @@map("health_check")
+}

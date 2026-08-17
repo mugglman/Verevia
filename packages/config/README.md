@@ -1,11 +1,14 @@
-# packages/config
+# @verevia/config
 
 Gemeinsame Konfiguration der Verevia-Plattform.
 
-## Zweck
+## Inhalt
 
-Dieses Paket enthält perspektivisch geteilte Konfigurationsgrundlagen für das Monorepo, zum Beispiel TypeScript-, ESLint- oder Build-Konfigurationen, die von mehreren Anwendungen und Paketen genutzt werden.
+- `typescript/base.json` — geteilte TypeScript-Basiskonfiguration
+- `typescript/nextjs.json` — Erweiterung für Next.js-Apps
+- `typescript/nestjs.json` — Erweiterung für NestJS-Apps
+- `eslint/base.mjs` — geteilte ESLint-Flat-Config (Basis für `apps/*`/`packages/*`)
 
 ## Status
 
-Es ist noch kein Code vorhanden. Dieses Verzeichnis dient aktuell als struktureller Platzhalter für die technische Umsetzung ab Phase 1 der [Roadmap](../../docs/roadmap/Roadmap.md).
+Grundkonfiguration vorhanden (Phase 1, technisches Skeleton). Keine fachlichen Regeln, keine App-spezifische Konfiguration.

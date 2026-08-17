@@ -8,4 +8,4 @@ Dieses Paket enthält perspektivisch wiederverwendbare React-Komponenten, die vo
 
 ## Status
 
-Es ist noch kein Code vorhanden. Dieses Verzeichnis dient aktuell als struktureller Platzhalter für die technische Umsetzung ab Phase 1 der [Roadmap](../../docs/roadmap/Roadmap.md).
+Technisches Skeleton vorhanden (Phase 1). Noch keine Komponentenbibliothek installiert und keine fachlichen Komponenten. Die shadcn/ui-Grundlage (Tailwind-Konfiguration, `cn()`-Helper, `components.json`) liegt in `apps/web`, da shadcn Komponenten-Quellcode direkt in die konsumierende App generiert statt ein vorgefertigtes npm-Paket bereitzustellen.

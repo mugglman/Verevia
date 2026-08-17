@@ -8,4 +8,4 @@ Dieses Paket enthält perspektivisch geteilte TypeScript-Typen und Schnittstelle
 
 ## Status
 
-Es ist noch kein Code vorhanden. Dieses Verzeichnis dient aktuell als struktureller Platzhalter für die technische Umsetzung ab Phase 1 der [Roadmap](../../docs/roadmap/Roadmap.md).
+Technisches Skeleton vorhanden (Phase 1). Noch keine fachlichen Domain-Types (Tenant, Person, RoleAssignment, …) — folgen im Prisma-Schema-Arbeitspaket, siehe [ARCHITEKTUR_FINALISIERUNG.md](../../docs/ARCHITEKTUR_FINALISIERUNG.md).

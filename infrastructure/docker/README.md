@@ -8,4 +8,12 @@ Dieses Verzeichnis enthält perspektivisch Dockerfiles und Compose-Konfiguration
 
 ## Status
 
-Es sind noch keine Docker-Konfigurationen vorhanden. Details zur geplanten Infrastruktur siehe [Deployment](../../docs/deployment/Deployment.md).
+`docker-compose.yml` stellt die lokale Entwicklungsinfrastruktur bereit (aktuell nur PostgreSQL 17; Redis wird erst ergänzt, wenn technisch benötigt). Dies ist **nicht** die Produktions-Infrastruktur — siehe [Deployment](../../docs/deployment/Deployment.md) für Traefik/VPS.
+
+## Verwendung
+
+```
+docker compose -f infrastructure/docker/docker-compose.yml up -d
+```
+
+`apps/web` und `apps/api` laufen weiterhin lokal über `pnpm dev`, nicht in Docker.

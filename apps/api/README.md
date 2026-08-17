@@ -8,7 +8,18 @@ Dieses Verzeichnis enthält perspektivisch die zentrale API. Vorgesehen ist eine
 
 ## Status
 
-Es ist noch keine lauffähige Anwendung vorhanden. Dieses Verzeichnis dient aktuell als struktureller Platzhalter für die technische Umsetzung ab Phase 1 der [Roadmap](../../docs/roadmap/Roadmap.md).
+Technisches Skeleton (Phase 1): NestJS 11, TypeScript, `GET /health`. Noch keine fachlichen Controller, noch keine Datenbank- oder Auth-Anbindung — diese folgen in eigenen Arbeitspaketen (`packages/database`, `packages/auth`).
+
+## Befehle (aus dem Repo-Root via Turborepo)
+
+```
+pnpm dev        # Nest im Watch-Modus (Port 3001)
+pnpm build      # Nest-Build nach dist/
+pnpm lint
+pnpm typecheck
+pnpm test       # Unit-Tests (Vitest)
+pnpm test:e2e   # E2E-Test für /health (Supertest)
+```
 
 ## Bezug
 

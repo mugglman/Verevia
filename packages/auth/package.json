@@ -1,0 +1,26 @@
+{
+  "name": "@verevia/auth",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no unit tests yet in @verevia/auth\""
+  },
+  "dependencies": {
+    "@verevia/database": "workspace:*",
+    "better-auth": "1.6.29"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "@verevia/config": "workspace:*",
+    "eslint": "^9.18.0",
+    "typescript": "5.9.3"
+  }
+}
