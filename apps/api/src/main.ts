@@ -1,19 +1,31 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "@verevia/auth";
 import { AppModule } from "./app.module";
 
-// NOTE: when packages/auth (better-auth) is wired in, NestFactory.create
-// must be called with { bodyParser: false } and better-auth's handler
-// mounted on the raw Express instance BEFORE re-enabling body parsing —
-// see docs/architecture/adr/0002-authentication-strategy.md and the
-// verified spike in docs/ARCHITEKTUR_FINALISIERUNG.md, section 1.
+// better-auth is mounted directly on the underlying Express instance,
+// BEFORE Nest's global body parser is (re-)enabled — verified in the Phase 1
+// spike (docs/ARCHITEKTUR_FINALISIERUNG.md, section 1) and required per
+// ADR 0002:
+//   1. NestFactory.create(AppModule, { bodyParser: false }) — otherwise
+//      Nest's body parser drains the request stream before better-auth can
+//      read it, and better-auth receives an empty body.
+//   2. Mount on "/api/auth/{*splat}" using Express 5's wildcard syntax
+//      (NestJS 11 ships Express 5; the Express 4 `*` syntax silently fails).
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   app.enableCors({
     origin: [process.env.APP_URL ?? "http://localhost:3000"],
     credentials: true,
   });
+
+  const expressInstance = app.getHttpAdapter().getInstance();
+  expressInstance.all("/api/auth/{*splat}", toNodeHandler(auth));
+
+  const express = await import("express");
+  app.use(express.default.json());
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
   await app.listen(port);

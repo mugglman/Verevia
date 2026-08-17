@@ -8,13 +8,18 @@
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "prisma generate && tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
-    "test": "echo \"no unit tests yet in @verevia/database\"",
+    "test": "echo \"unit tests: none yet; RLS integration tests require a real PostgreSQL instance, see pnpm test:integration\"",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3"
@@ -24,6 +29,8 @@
     "@verevia/config": "workspace:*",
     "eslint": "^9.18.0",
     "prisma": "6.19.3",
-    "typescript": "5.9.3"
+    "tsx": "^4.19.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
   }
 }

@@ -8,7 +8,7 @@ Dieses Verzeichnis enthält perspektivisch die zentrale API. Vorgesehen ist eine
 
 ## Status
 
-Technisches Skeleton (Phase 1): NestJS 11, TypeScript, `GET /health`. Noch keine fachlichen Controller, noch keine Datenbank- oder Auth-Anbindung — diese folgen in eigenen Arbeitspaketen (`packages/database`, `packages/auth`).
+NestJS 11, TypeScript. `GET /health` (Liveness) + `GET /health/ready` (DB-Readiness), better-auth gemountet (`/api/auth/*`), `TenantContextInterceptor` (Session- + Membership-geprüfter Tenant-Kontext, siehe `src/tenant/`) — noch nicht an einen fachlichen Controller angeschlossen, da noch keine fachliche Oberfläche existiert. Details: [PHASE_2_CORE_REPORT.md](../../docs/PHASE_2_CORE_REPORT.md).
 
 ## Befehle (aus dem Repo-Root via Turborepo)
 
@@ -18,7 +18,8 @@ pnpm build      # Nest-Build nach dist/
 pnpm lint
 pnpm typecheck
 pnpm test       # Unit-Tests (Vitest)
-pnpm test:e2e   # E2E-Test für /health (Supertest)
+pnpm test:e2e   # E2E-Test für /health (Supertest, kein DB-Zugriff)
+pnpm test:integration   # Interceptor + /health/ready gegen echtes PostgreSQL (siehe docs/DEVELOPMENT.md)
 ```
 
 ## Bezug

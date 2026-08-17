@@ -1,10 +1,21 @@
-// Verevia — Prisma-Grundkonfiguration (Phase 1 Skeleton)
+// Verevia — Core-Datenmodell (Phase 2)
 //
-// WICHTIG: Dies ist bewusst noch NICHT das fachliche Datenmodell aus
-// docs/database/Database.md. Tenant, Person, Membership, RoleAssignment,
-// PersonRelationship, Tournament etc. folgen in einem eigenen
-// Arbeitspaket. Prisma ist absichtlich auf ^6.x gepinnt, siehe
+// Technisches Fundament für Multi-Tenancy/Identity/RBAC, siehe:
+//   - docs/database/Database.md (fachlicher Entwurf)
+//   - docs/AUTH_IDENTITY_RBAC_ARCHITEKTUR.md (Account/Person-Trennung, RoleAssignment, PersonRelationship)
+//   - docs/ARCHITEKTUR_FINALISIERUNG.md (finales RoleAssignment-Modell, RLS-Konzept)
+//   - docs/architecture/adr/0002-0006 (ACCEPTED)
+//
+// Noch NICHT enthalten: Season/Event/Attendance/Task/Tournament/Match/Venue/
+// Notification/AuditLog/JointTeam — folgen in einem eigenen, fachlichen
+// Arbeitspaket. Prisma ist absichtlich auf ^6.x gepinnt (nicht 7), siehe
 // docs/architecture/adr/0002-authentication-strategy.md.
+//
+// RLS-Hinweis: Row-Level-Security wird NICHT deklarativ über Prisma
+// abgebildet (Prisma 6 hat dafür keine native Unterstützung), sondern
+// gezielt per SQL-Migration ergänzt — siehe die Migration, die auf die
+// `prisma migrate dev`-Migration dieses Schemas folgt, sowie
+// docs/PHASE_2_CORE_REPORT.md, Abschnitt "RLS-Implementierung".
 
 generator client {
   provider = "prisma-client-js"
@@ -15,11 +26,321 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Platzhalter-Modell, um die Prisma-Pipeline (generate/db push/Client)
-/// technisch zu verifizieren, ohne dem fachlichen Datenmodell vorzugreifen.
-model HealthCheck {
-  id        String   @id @default(uuid())
-  checkedAt DateTime @default(now())
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
 
-  @@map("health_check")
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+}
+
+/// Vereinsrollen, siehe docs/product/Roles-and-Permissions.md.
+/// Plattformrollen sind bewusst ein eigenes Enum (PlatformRole), siehe ADR 0004.
+enum Role {
+  TENANT_ADMIN
+  DEPARTMENT_ADMIN
+  YOUTH_DIRECTOR
+  TEAM_MANAGER
+  COACH
+  ASSISTANT_COACH
+  PLAYER
+  MEMBER
+  GUEST
+}
+
+enum PlatformRole {
+  PLATFORM_OWNER
+  PLATFORM_ADMIN
+  PLATFORM_SUPPORT
+}
+
+enum ScopeType {
+  TENANT
+  DEPARTMENT
+  TEAM
+}
+
+/// Elternteil/Sorgeberechtigter ist bewusst KEINE RBAC-Rolle, siehe ADR 0005.
+enum RelationshipType {
+  PARENT
+  LEGAL_GUARDIAN
+  EMERGENCY_CONTACT
+}
+
+enum RelationshipStatus {
+  PENDING
+  VERIFIED
+  REVOKED
+}
+
+// ---------------------------------------------------------------------------
+// better-auth-eigene Modelle (generiert via `npx @better-auth/cli generate`,
+// siehe packages/auth/src/index.ts). `User` ist um das domänenspezifische
+// Feld `status` erweitert (packages/auth: `user.additionalFields`).
+//
+// Diese vier Modelle sind bewusst NICHT tenant-partitioniert und tragen
+// KEIN Row-Level-Security — siehe docs/ARCHITEKTUR_FINALISIERUNG.md,
+// Abschnitt 8 ("globale Identitätsebene").
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String     @id @default(uuid())
+  name          String
+  email         String
+  emailVerified Boolean    @default(false)
+  image         String?
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  sessions                Session[]
+  accounts                Account[]
+  memberships             Membership[]
+  platformRoleAssignments PlatformRoleAssignment[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------------------------------------------------------------------------
+// Plattformebene (mandantenübergreifend, siehe ADR 0004)
+// ---------------------------------------------------------------------------
+
+/// Mandantenübergreifende Plattformrolle, direkt am User — bewusst getrennt
+/// von RoleAssignment (Person-basiert, tenant-partitioniert).
+model PlatformRoleAssignment {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      PlatformRole
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, role])
+  @@map("platform_role_assignment")
+}
+
+// ---------------------------------------------------------------------------
+// Mandantenebene (RLS-geschützt, siehe Migration + docs/ARCHITEKTUR_FINALISIERUNG.md Abschnitt 8)
+//
+// Ausnahme: `Tenant` selbst trägt keine RLS-Policy — der Tenant ist die
+// Wurzel der Mandantenhierarchie, nicht durch seine eigene tenant_id
+// gefiltert. Zugriff auf Tenant-Zeilen (z. B. Slug-Lookup beim Login,
+// "meine Vereine" über Membership→Person) erfolgt applikationsseitig.
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String       @id @default(uuid())
+  name      String
+  slug      String       @unique
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  departments         Department[]
+  persons             Person[]
+  roleAssignments     RoleAssignment[]
+  personRelationships PersonRelationship[]
+  teams               Team[]
+
+  @@map("tenant")
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams           Team[]
+  roleAssignments RoleAssignment[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("department")
+}
+
+model Team {
+  id           String     @id @default(uuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "team_tenant_fkey")
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  name         String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  roleAssignments RoleAssignment[]
+
+  @@unique([departmentId, name])
+  @@index([tenantId])
+  @@index([departmentId])
+  @@map("team")
+}
+
+/// Vereinsmitglied — mandantenbezogen, existiert unabhängig von einem
+/// `User`-Account (z. B. minderjähriges Mitglied ohne eigenen Login).
+/// Siehe ADR 0003.
+model Person {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  firstName    String
+  lastName     String
+  birthDate    DateTime?
+  contactEmail String?
+  contactPhone String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships             Membership[]
+  roleAssignments         RoleAssignment[]     @relation("PersonRoleAssignments")
+  grantedRoleAssignments  RoleAssignment[]     @relation("GrantedByPerson")
+  relationshipsAsGuardian PersonRelationship[] @relation("RelationshipFromPerson")
+  relationshipsAsChild    PersonRelationship[] @relation("RelationshipToPerson")
+  verifiedRelationships   PersonRelationship[] @relation("RelationshipVerifiedBy")
+
+  @@index([tenantId])
+  @@map("person")
+}
+
+/// Verknüpft einen globalen Login-Account (`User`) mit einer mandantenbezogenen
+/// Person ("dieser Login ist diese Person"). Kein Rollenträger, siehe ADR 0003.
+model Membership {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  personId  String           @unique
+  person    Person           @relation(fields: [personId], references: [id], onDelete: Restrict)
+  status    MembershipStatus @default(PENDING)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId])
+  @@map("membership")
+}
+
+/// Scope-basierte Rollenzuweisung, siehe ADR 0004 und
+/// docs/ARCHITEKTUR_FINALISIERUNG.md Abschnitt 4. Scope-Konsistenz
+/// (TENANT ⇒ department/team NULL, DEPARTMENT ⇒ department gesetzt,
+/// TEAM ⇒ team gesetzt) wird per CHECK-Constraint in der SQL-Migration
+/// erzwungen, da Prisma 6 mehrspaltige CHECK-Constraints nicht deklarativ
+/// unterstützt.
+model RoleAssignment {
+  id           String      @id @default(uuid())
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  personId     String
+  person       Person      @relation("PersonRoleAssignments", fields: [personId], references: [id], onDelete: Restrict)
+  role         Role
+  scopeType    ScopeType
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  teamId       String?
+  team         Team?       @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  validFrom    DateTime?
+  validUntil   DateTime?
+
+  grantedByPersonId String?
+  grantedByPerson   Person? @relation("GrantedByPerson", fields: [grantedByPersonId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([personId])
+  @@index([departmentId])
+  @@index([teamId])
+  @@map("role_assignment")
+}
+
+/// Gerichtete, verifizierungspflichtige Beziehung zwischen zwei Personen
+/// desselben Tenants (z. B. Eltern-Kind). KEINE RBAC-Rolle, siehe ADR 0005.
+model PersonRelationship {
+  id              String             @id @default(uuid())
+  tenantId        String
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  fromPersonId    String
+  fromPerson      Person             @relation("RelationshipFromPerson", fields: [fromPersonId], references: [id], onDelete: Restrict)
+  toPersonId      String
+  toPerson        Person             @relation("RelationshipToPerson", fields: [toPersonId], references: [id], onDelete: Restrict)
+  type            RelationshipType
+  status          RelationshipStatus @default(PENDING)
+  isLegalGuardian Boolean            @default(false)
+  validFrom       DateTime?
+  validUntil      DateTime?
+
+  verifiedByPersonId String?
+  verifiedByPerson   Person? @relation("RelationshipVerifiedBy", fields: [verifiedByPersonId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fromPersonId, toPersonId, type])
+  @@index([tenantId])
+  @@index([fromPersonId])
+  @@index([toPersonId])
+  @@map("person_relationship")
 }

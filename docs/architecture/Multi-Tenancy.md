@@ -47,6 +47,10 @@ Die beteiligten Vereine einer Spielgemeinschaft werden über eine eigene Zuordnu
 
 Plattformadministratoren (`Platform Owner`, `Platform Administrator`, `Platform Support`) sind organisatorisch strikt von Vereinsadministratoren getrennt. Sie besitzen plattformweite, mandantenübergreifende Rechte, die ausschließlich für den Betrieb der Plattform benötigt werden – nicht für den fachlichen Vereinsbetrieb.
 
+## RLS-Implementierung (Phase 2, technischer Befund)
+
+Row-Level-Security ist implementiert (`packages/database/prisma/migrations/`) und per Integrationstest gegen echtes PostgreSQL 17 verifiziert (siehe [PHASE_2_CORE_REPORT.md](../PHASE_2_CORE_REPORT.md)). Ein wichtiger, zunächst überraschender Befund dabei: Die über `POSTGRES_USER` im offiziellen `postgres`-Docker-Image angelegte Rolle ist automatisch **PostgreSQL-Superuser** — und Superuser umgehen Row-Level-Security **immer**, unabhängig von `FORCE ROW LEVEL SECURITY`. Die Anwendung (und alle Tests) verbinden deshalb über eine dedizierte, nicht-privilegierte Rolle (`verevia_app`, angelegt durch die Migration `add_non_superuser_app_role`) — die Superuser-Rolle wird ausschließlich für Migrationen verwendet. Diese Trennung gilt für jede Umgebung (lokal wie produktiv) gleichermaßen.
+
 ## Domains je Mandant
 
 - Die zentrale Anwendung läuft zunächst einheitlich unter `app.verevia.app` für alle Vereine.
