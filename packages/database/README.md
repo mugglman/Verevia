@@ -18,7 +18,7 @@ Enthält aktuell nur:
 
 ## Befehle
 
-```
+```bash
 pnpm db:generate   # Prisma Client generieren
 pnpm db:push        # Schema gegen die lokale Dev-Datenbank pushen (siehe infrastructure/docker)
 pnpm db:studio       # Prisma Studio

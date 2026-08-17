@@ -12,7 +12,7 @@ Dieses Verzeichnis enthält perspektivisch Dockerfiles und Compose-Konfiguration
 
 ## Verwendung
 
-```
+```bash
 docker compose -f infrastructure/docker/docker-compose.yml up -d
 ```
 

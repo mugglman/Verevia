@@ -83,7 +83,7 @@ Der 8-jährige Spieler aus dem Beispiel ist eine vollständige `Person` mit `Rol
 
 `Membership` bedeutet in diesem Modell **nicht** mehr "Vereinsmitgliedschaft mit Rolle" (wie noch in `Database.md`/`Multi-Tenancy.md` beschrieben), sondern ausschließlich: **"Dieser Login-Account (`User`) ist diese Person (`Person`)."**
 
-```
+```text
 Membership
 ├── userId       → User
 ├── personId     → Person   (Person trägt bereits tenantId)
@@ -103,7 +103,7 @@ Membership
 
 ### Modell: `PersonRelationship` (gerichtet, nicht bidirektional gespeichert)
 
-```
+```text
 PersonRelationship
 ├── tenantId          (redundant zu from/toPerson.tenantId, für direkte RLS-Policy)
 ├── fromPersonId       → Person   (die erziehungsberechtigte/betreuende Person)
@@ -128,7 +128,7 @@ PersonRelationship
 
 Ersetzt die bisherige Annahme "eine oder mehrere Rollen direkt an `Membership`" aus `Database.md`.
 
-```
+```text
 RoleAssignment
 ├── personId       → Person        (trägt bereits tenantId)
 ├── roleId          → Role
@@ -144,7 +144,7 @@ Rollen hängen bewusst an `Person`, nicht an `User` — Berechtigungen sind eine
 
 Plattformrollen (`Platform Owner/Administrator/Support`, siehe `Roles-and-Permissions.md`) sind **mandantenübergreifend** und nicht an eine `Person` in einem bestimmten Verein gebunden — ein Plattform-Support-Mitarbeiter muss kein Vereinsmitglied sein. Deshalb eigenständige, kleine Tabelle:
 
-```
+```text
 PlatformRoleAssignment
 ├── userId    → User   (direkt, kein Umweg über Person/Tenant)
 └── role         SUPER_ADMIN | PLATFORM_ADMIN | PLATFORM_SUPPORT
@@ -163,6 +163,7 @@ Diese bewusste Trennung von `RoleAssignment` (Person-basiert, tenant-partitionie
 **Spielgemeinschaften:** `JointTeam` (aus `ARCHITEKTUR_BERICHT.md`, Abschnitt 7) wird als `scopeType=TEAM` mit `scopeId=jointTeam.id` behandelt — kein eigener Scope-Typ nötig, da eine `JointTeam` sich für Autorisierungszwecke wie ein normales Team verhält.
 
 **Realistisch sinnvolle künftige Scopes (nicht jetzt umzusetzen, nur vorgemerkt):**
+
 - `TOURNAMENT` — für temporäre Turnier-Organisator-Rollen (Phase 5), die nicht an ein festes Team gebunden sind.
 - Kein eigener `SEASON`-Scope nötig — zeitliche Begrenzung wird stattdessen generisch über `validFrom`/`validUntil` auf `RoleAssignment` gelöst (deckt sowohl saisonale als auch beliebige andere befristete Zuweisungen ab, ohne einen weiteren Scope-Typ einzuführen).
 
@@ -181,7 +182,7 @@ Begründung anhand der beiden Beispiele aus dem Auftrag:
 
 ### Auflösungskette pro Request
 
-```
+```text
 Request (mit Session-Cookie)
   → AuthGuard: welcher User? (better-auth Session-Validierung)
   → TenantContextGuard: welcher Tenant? (siehe Abschnitt 10)
@@ -311,7 +312,7 @@ erDiagram
 
 Maik, `Person` in Tenant "TSV Benediktbeuern":
 
-```
+```text
 RoleAssignment 1: role=MEMBER,        scope=TENANT
 RoleAssignment 2: role=COACH,         scope=TEAM (E-Jugend)
 RoleAssignment 3: role=PLAYER,        scope=TEAM (Alte Herren)
@@ -324,7 +325,7 @@ Ein einziger `User`-Account, eine einzige `Person`-Zeile in diesem Tenant, drei 
 
 ## 13. Beispiel: Eltern mit mehreren Kindern
 
-```
+```text
 Person: Anna
 Person: Thomas
 Person: Max (Kind)
@@ -345,7 +346,7 @@ Vier `PersonRelationship`-Zeilen bilden zwei Eltern × zwei Kinder ab, ohne dass
 
 ## 14. Beispiel: Benutzer in mehreren Vereinen
 
-```
+```text
 User A
 ├── Membership 1 → Person A1 (Tenant: Verein A) — RoleAssignment: role=COACH, scope=TEAM
 └── Membership 2 → Person A2 (Tenant: Verein B) — RoleAssignment: role=PLAYER, scope=TEAM

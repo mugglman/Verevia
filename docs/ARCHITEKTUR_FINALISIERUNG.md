@@ -72,7 +72,7 @@ ADR 0002 wird auf **ACCEPTED** gesetzt (siehe Abschnitt 10).
 
 **Entscheidung: scope-spezifische, nullable Fremdschlüssel statt polymorpher generischer `scopeId`.**
 
-```
+```text
 RoleAssignment
 ├── id                    uuid
 ├── tenantId              uuid        (Pflicht, direkte RLS-Policy ohne Join)
@@ -294,7 +294,7 @@ Prüfung gegen die vom Auftrag vorgegebenen Kriterien:
 
 Alle sechs Kriterien sind erfüllt. Die verbleibenden Punkte aus Abschnitt 12 (Punkte 2–4) sind **Verifikationsarbeiten innerhalb von Phase 1**, keine offenen Architekturentscheidungen — sie blockieren den Start des Turborepo-Skeletons nicht, müssen aber vor Abschluss von Phase 1 (Verevia Core) erledigt sein. Die rechtlichen Blocker aus Abschnitt 11 blockieren den **Pilotbetrieb (Phase 6)**, nicht den Skeleton-Start.
 
-**READY FOR SKELETON**
+### Verdikt: READY FOR SKELETON
 
 ---
 

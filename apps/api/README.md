@@ -12,7 +12,7 @@ Technisches Skeleton (Phase 1): NestJS 11, TypeScript, `GET /health`. Noch keine
 
 ## Befehle (aus dem Repo-Root via Turborepo)
 
-```
+```bash
 pnpm dev        # Nest im Watch-Modus (Port 3001)
 pnpm build      # Nest-Build nach dist/
 pnpm lint

@@ -20,7 +20,7 @@ Die parallel vorbereitete VPS-Infrastruktur (Traefik, Docker-Netzwerke, Verzeich
 
 ### Struktur
 
-```
+```text
 Verevia/
 ├── apps/{web,admin,api}/README.md      # nur Platzhalter, kein Code
 ├── packages/{ui,types,config,utils}/README.md  # nur Platzhalter, kein Code
@@ -43,6 +43,7 @@ Git-Status: Branch `chore/initial-project-setup` ist auf `origin` vorhanden, abe
 ### Bewertung
 
 **Positiv:**
+
 - Die Dokumentation ist widerspruchsfrei über alle Dateien hinweg (gleiche Entitäten, gleiche Rollenbegriffe, gleiche Statuskennzeichnung "Entwurf").
 - ADR-Praxis ist bereits etabliert (0001 Modularer Monolith) — sollte fortgeführt werden.
 - `Department`/`Sportart`-Trennung ist im Datenmodell bereits mitgedacht, obwohl MVP nur Fußball zeigt — genau die richtige Vorbereitung für spätere Sportarten ohne Kernumbau.
@@ -50,6 +51,7 @@ Git-Status: Branch `chore/initial-project-setup` ist auf `origin` vorhanden, abe
 - `TENANT_MODE=shared` in `.env.example` deutet bereits in Richtung Shared-Schema — deckt sich mit der Empfehlung in Abschnitt 6.
 
 **Zu klären/korrigieren:**
+
 - Mehrere Dokumente (README.md, Architecture.md, Deployment.md, infrastructure/proxy/README.md) listen "Traefik oder Caddy" noch als offen — laut aktuellem Infrastrukturstand läuft Traefik 3.7 bereits produktiv getestet unter `status.verevia.app`. Diese Dokumente sind veraltet und sollten aktualisiert werden (siehe Abschnitt 17).
 - Kein Prisma-Schema, keine Migration — erwartungsgemäß für diese Phase.
 - `README.md` erwähnt "Vorbereitet für zukünftige Microservices-Umstellung" als Kernprinzip, während ADR 0001 explizit den modularen Monolithen als Zielarchitektur für Phase 1 festlegt. Das ist kein Widerspruch, sollte aber im README präzisiert werden: nicht "Vorbereitung auf Microservices" als Ziel, sondern "Modulgrenzen, die eine spätere Auslagerung nicht verbauen".
@@ -86,15 +88,18 @@ Git-Status: Branch `chore/initial-project-setup` ist auf `origin` vorhanden, abe
 ### Begründung der wichtigsten Abweichungen/Ergänzungen zum bisherigen Stack
 
 **Auth: eigene NestJS-Lösung statt Auth.js oder Keycloak.**
+
 - *Auth.js (NextAuth)* ist eng an Next.js gekoppelt und würde die Session-/Rollenlogik ins Frontend ziehen, obwohl die fachliche Autorisierung laut Architecture.md klar im Backend (NestJS, API-First) liegen soll. Das erzeugt eine unsaubere Verantwortungsteilung zwischen `apps/web` und `apps/api`.
 - *Keycloak* ist funktional stark (SSO, SAML, OIDC), aber ein eigenständiger Java-Dienst mit spürbarem RAM-Bedarf (typisch 500 MB–1 GB) auf einem VPS mit insgesamt 8 GB RAM, der neben Postgres, Redis, Traefik und den Anwendungscontainern laufen muss. Für die Anforderungen bis Phase 6 (E-Mail/Passwort, Reset, Verifizierung, später MFA) ist das Overengineering nach den eigenen Grundprinzipien ("keine unnötige Infrastruktur").
 - Empfehlung: Passport.js-Strategien direkt in `apps/api`, Passwort-Hashing mit Argon2, Sessions oder kurzlebige JWTs mit Refresh-Token in httpOnly-Cookies, MFA (TOTP) als späterer Ausbauschritt. Das hält die Auth-Domäne dort, wo laut eigener Architektur die Mandanten- und Rechteprüfung ohnehin stattfindet, und die vorbereitete Subdomain `auth.verevia.app` kann später auf ein eigenständiges Nest-Modul oder einen ausgelagerten Dienst zeigen, ohne dass sich am Datenmodell etwas ändert.
 - Falls in Phase 7 (SaaS/Verbands-SSO) echte SSO-/SAML-Anforderungen externer Organisationen entstehen, ist Keycloak oder ein Managed-Auth-Dienst (z. B. WorkOS) dann gezielt nachrüstbar — bewusst **jetzt nicht** vorwegnehmen.
 
 **Object Storage: R2 statt MinIO in Produktion.**
+
 - MinIO ist voll dokumentkonform (selbst gehostet, S3-kompatibel), verbraucht aber dauerhaft RAM/Disk auf demselben knappen VPS. Cloudflare R2 ist S3-API-kompatibel, hat keine Egress-Kosten und keinen Betriebsaufwand. Für lokale Entwicklung bleibt MinIO via Docker Compose sinnvoll (identische S3-API, kein Internetzugriff nötig).
 
 **class-validator statt Zod im Backend.**
+
 - NestJS ist um `class-validator`/`class-transformer` herum gebaut (Decorator-basierte DTOs, native Pipe-Integration). Zod zusätzlich einzuführen würde zwei Validierungssysteme im selben Backend erzeugen. Zod bleibt sinnvoll auf Frontend-Seite für Formulare (`react-hook-form` + `@hookform/resolvers/zod`).
 
 ---
@@ -103,7 +108,7 @@ Git-Status: Branch `chore/initial-project-setup` ist auf `origin` vorhanden, abe
 
 Grundstruktur wie in README.md/Architecture.md bereits angelegt, mit einer wesentlichen Änderung: **keine eigenständige `apps/admin` im MVP.**
 
-```
+```text
 Verevia/
 ├── apps/
 │   ├── web/                # Next.js: Vereins-App UND Plattform-Admin-Bereich
@@ -172,7 +177,7 @@ Erweiterung des bestehenden Entwurfs aus `Database.md`, mit einer neuen zentrale
 
 ### Kernstruktur (Beispiel TSV Benediktbeuern)
 
-```
+```text
 Tenant (TSV Benediktbeuern)
 ├── Department (Fußball) → Sport: Fußball
 │   ├── Team (E-Jugend)
@@ -208,7 +213,7 @@ Das bestehende Konzept aus `Multi-Tenancy.md` und `Database.md` (`JointTeam` + `
 
 Neue Entität **`RoleAssignment`** statt einer reinen `Role`-Liste auf `Membership`:
 
-```
+```text
 Membership (User ↔ Tenant)
 └── RoleAssignment[]
       ├── role: Role
@@ -290,7 +295,7 @@ Diese Entscheidung ist eine **Ergänzung** von `Database.md`, kein Widerspruch �
 
 Aktuell existiert nur `markdown-check.yml`. Empfohlene Ergänzung, sobald Code existiert:
 
-```
+```text
 Feature-Branch → Pull Request
    → Lint (ESLint) + Typecheck (tsc) + Unit-Tests (Jest/Vitest)   [Turborepo: nur betroffene Pakete]
    → Build (Turborepo)

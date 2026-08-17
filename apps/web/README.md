@@ -12,7 +12,7 @@ Technisches Skeleton (Phase 1): Next.js 16 App Router, TypeScript, Tailwind CSS 
 
 ## Befehle (aus dem Repo-Root via Turborepo)
 
-```
+```bash
 pnpm dev      # Next.js Dev-Server (Turbopack)
 pnpm build    # Next.js Production-Build
 pnpm lint     # ESLint

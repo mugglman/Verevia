@@ -14,7 +14,7 @@
 
 ## 2. Implementierte Monorepo-Struktur
 
-```
+```text
 Verevia/
 ├── apps/
 │   ├── web/      Next.js 16 (App Router)
