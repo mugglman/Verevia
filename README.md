@@ -115,9 +115,9 @@ Verevia soll innerhalb der kommenden zehn Jahre eine führende Vereinsplattform 
 | Monorepo | pnpm Workspaces (9.15.9) + Turborepo (2.10.10) | Skeleton implementiert |
 | Web-Frontend | Next.js 16 (App Router) + TypeScript + Tailwind CSS 4 | Skeleton implementiert (technische Startseite) |
 | Backend | NestJS 11 + TypeScript | Skeleton implementiert (`GET /health`) |
-| Datenbank | PostgreSQL 17 (lokal via Docker) | Grundkonfiguration (Prisma-Client, noch kein fachliches Schema) |
-| ORM | Prisma **^6.x** (bewusst nicht 7, siehe ADR 0002) | Grundkonfiguration |
-| Authentifizierung | better-auth, selbst gehostet in `apps/api` | Struktur vorbereitet, noch nicht produktiv verdrahtet |
+| Datenbank | PostgreSQL 17 (lokal via Docker) | Core-Datenmodell implementiert (Tenant/Person/Membership/RoleAssignment/…), RLS aktiv und getestet |
+| ORM | Prisma **^6.x** (bewusst nicht 7, siehe ADR 0002) | Core-Datenmodell implementiert |
+| Authentifizierung | better-auth, selbst gehostet in `apps/api` | In `apps/api` gemountet, Session-/Membership-Prüfung über `TenantContextInterceptor` |
 | Mobile | Progressive Web App | Geplant |
 | Container | Docker (lokal: Postgres; Produktion: Traefik/VPS) | Lokale Dev-Infrastruktur implementiert |
 | Reverse Proxy | Traefik (VPS, produktiv bereits im Betrieb) | Entschieden |
@@ -158,7 +158,9 @@ Verevia/
 │   ├── ARCHITEKTUR_BERICHT.md
 │   ├── AUTH_IDENTITY_RBAC_ARCHITEKTUR.md
 │   ├── ARCHITEKTUR_FINALISIERUNG.md
-│   └── PHASE_1_SKELETON_REPORT.md
+│   ├── PHASE_1_SKELETON_REPORT.md
+│   ├── PHASE_1_BASELINE_REPORT.md
+│   └── PHASE_2_CORE_REPORT.md
 ├── infrastructure/
 │   ├── docker/           (lokale Dev-Infrastruktur: docker-compose.yml)
 │   ├── proxy/
@@ -211,9 +213,9 @@ Verevia/
 
 ## Lokaler Entwicklungsstand
 
-Das technische Skeleton ist lauffähig: Next.js-Startseite, NestJS-Health-Endpunkt, Prisma-Grundkonfiguration, lokale PostgreSQL-Infrastruktur, vollständige Quality-Gate-Pipeline (Lint/Typecheck/Test/Build) und CI.
+Das technische Skeleton ist lauffähig: Next.js-Startseite, NestJS mit `GET /health` + `/health/ready`, better-auth gemountet, lokale PostgreSQL-Infrastruktur, vollständige Quality-Gate-Pipeline (Lint/Typecheck/Test/Build) und CI. Das Core-Datenmodell (Tenant, Person, Membership, RoleAssignment, PersonRelationship, PlatformRoleAssignment, Department, Team) ist implementiert, per PostgreSQL Row-Level-Security mandantengetrennt und gegen echtes PostgreSQL 17 integrationsgetestet — siehe [PHASE_2_CORE_REPORT.md](./docs/PHASE_2_CORE_REPORT.md).
 
-**Bewusst noch nicht enthalten**: fachliche Verevia-Features (Verein, Mannschaften, Turnierplan, Mitgliederverwaltung), produktive Authentifizierung, das vollständige Datenmodell aus [Database.md](./docs/database/Database.md). Details zum Umfang dieses Arbeitspakets: [PHASE_1_SKELETON_REPORT.md](./docs/PHASE_1_SKELETON_REPORT.md).
+**Bewusst noch nicht enthalten**: fachliche Verevia-Features (Fußball, Mannschafts-/Turnierverwaltung, Kalender, Anwesenheit), UI für Login/Registrierung/Dashboard. Details: [PHASE_1_SKELETON_REPORT.md](./docs/PHASE_1_SKELETON_REPORT.md), [PHASE_1_BASELINE_REPORT.md](./docs/PHASE_1_BASELINE_REPORT.md), [PHASE_2_CORE_REPORT.md](./docs/PHASE_2_CORE_REPORT.md).
 
 ---
 
@@ -236,6 +238,8 @@ Weiterführende Dokumentation befindet sich im Verzeichnis [`docs/`](./docs):
 - [Architektur-Finalisierung](./docs/ARCHITEKTUR_FINALISIERUNG.md)
 - [Lokale Entwicklung](./docs/DEVELOPMENT.md)
 - [Phase-1-Skeleton-Bericht](./docs/PHASE_1_SKELETON_REPORT.md)
+- [Phase-1-Baseline-Bericht](./docs/PHASE_1_BASELINE_REPORT.md)
+- [Phase-2-Core-Bericht](./docs/PHASE_2_CORE_REPORT.md)
 
 ---
 

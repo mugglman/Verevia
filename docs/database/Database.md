@@ -1,8 +1,10 @@
 # Datenbank
 
-> Status: Fachlicher Entwurf. Es existiert noch **kein** endgültiges Prisma-Schema und keine Datenbankmigration. Dieses Dokument beschreibt die fachlichen Entitäten und ihre Beziehungen als Grundlage für die spätere technische Umsetzung.
+> Status: Fachlicher Entwurf für die Kern-Entitäten **implementiert** (Tenant, Department, Team, Person, User/Session/Account/Verification, Membership, RoleAssignment, PlatformRoleAssignment, PersonRelationship) — siehe `packages/database/prisma/schema.prisma` und [PHASE_2_CORE_REPORT.md](../PHASE_2_CORE_REPORT.md). Fachliche Module (Fußball, Turnierplan, Kalender, Anwesenheit) sind weiterhin nur hier beschrieben, noch nicht implementiert.
 >
 > **Synchronisiert am 2026-08-17** mit den Entscheidungen aus [AUTH_IDENTITY_RBAC_ARCHITEKTUR.md](../AUTH_IDENTITY_RBAC_ARCHITEKTUR.md) und [ARCHITEKTUR_FINALISIERUNG.md](../ARCHITEKTUR_FINALISIERUNG.md): `Membership` ist kein Rollenträger mehr, Rollen sind scope-basiert (`RoleAssignment`), Eltern-Kind-Beziehungen sind ein eigenständiges Konzept (`PersonRelationship`), Plattformrollen sind von Vereinsrollen technisch getrennt (`PlatformRoleAssignment`). Details und Begründung siehe dort.
+>
+> **Ergänzt am 2026-08-17 (Phase 2):** `Role` ist im implementierten Schema ein Prisma-**Enum** mit dem in [Roles-and-Permissions.md](../product/Roles-and-Permissions.md) festgelegten, festen Rollenkatalog — keine eigene, dynamisch pflegbare `Role`/`Permission`-Datenbanktabelle. Das ist eine konkrete Implementierungsentscheidung dieser Phase (kein Widerspruch zu einer ACCEPTED-Architekturentscheidung, da keine der ADRs eine dynamische Rollentabelle vorschreibt), begründet durch den bewusst festen, plattformweiten Rollenkatalog ohne aktuellen Bedarf an vereinsindividuellen Rollen.
 
 ## Zweck
 

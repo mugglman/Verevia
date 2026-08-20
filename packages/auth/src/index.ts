@@ -27,4 +27,15 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false,
   },
+  user: {
+    // Verevia domain field on top of better-auth's own User columns.
+    // Kept in sync with the `UserStatus` enum in packages/database/prisma/schema.prisma.
+    additionalFields: {
+      status: {
+        type: "string",
+        defaultValue: "ACTIVE",
+        input: false,
+      },
+    },
+  },
 });

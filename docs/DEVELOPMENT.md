@@ -45,13 +45,44 @@ Startet PostgreSQL 17 auf Port 5432 (Zugangsdaten siehe `.env.example`). Redis i
 
 ## Datenbank
 
+`packages/database/prisma/schema.prisma` enthält das Core-Datenmodell (Tenant, Department, Team, Person, User/Session/Account/Verification (better-auth), Membership, RoleAssignment, PlatformRoleAssignment, PersonRelationship) — noch **kein** fachliches Modell für Fußball/Turniere/Kalender (eigenes Arbeitspaket). Details: [PHASE_2_CORE_REPORT.md](./PHASE_2_CORE_REPORT.md).
+
+**Zwei Rollen, zwei Verbindungen** (siehe `.env.example`):
+
 ```bash
-pnpm --filter @verevia/database db:generate   # Prisma Client generieren
-pnpm --filter @verevia/database db:push        # aktuelles (Platzhalter-)Schema gegen die lokale DB pushen
-pnpm --filter @verevia/database db:studio       # Prisma Studio
+# 1) Migrationen — Superuser-Rolle aus docker-compose.yml
+DATABASE_URL=postgresql://verevia:change-me@localhost:5432/verevia \
+  pnpm --filter @verevia/database exec prisma migrate dev
+
+# 2) Seed — läuft über getTenantPrisma() intern, aber ebenfalls mit der
+#    App-Rolle (verevia_app), sonst blockt RLS den Department-/Person-Insert
+DATABASE_URL=postgresql://verevia_app:change-me@localhost:5432/verevia \
+  pnpm --filter @verevia/database db:seed
+
+# 3) App-Betrieb (apps/api) — IMMER die App-Rolle, nie die Superuser-Rolle
+#    (PostgreSQL-Superuser umgehen Row Level Security grundsätzlich)
+DATABASE_URL=postgresql://verevia_app:change-me@localhost:5432/verevia pnpm --filter @verevia/api dev
 ```
 
-`packages/database/prisma/schema.prisma` enthält aktuell bewusst noch kein fachliches Datenmodell — nur die Grundkonfiguration und ein Platzhaltermodell (`HealthCheck`) zur technischen Verifikation der Pipeline.
+Die Rolle `verevia_app` (nicht-privilegiert, `NOSUPERUSER`) wird durch die Migration `add_non_superuser_app_role` automatisch angelegt — kein manueller Schritt nötig, nur bei der `DATABASE_URL` an die richtige Rolle denken.
+
+```bash
+pnpm --filter @verevia/database db:generate   # Prisma Client generieren
+pnpm --filter @verevia/database db:push        # Schema-Änderungen ohne Migration pushen (nur Superuser-Rolle)
+pnpm --filter @verevia/database db:studio       # Prisma Studio
+pnpm --filter @verevia/database test:integration  # RLS-Integrationstests (siehe unten)
+```
+
+### RLS-Integrationstests
+
+`packages/database/src/__tests__/rls.integration.spec.ts` und `apps/api/test/*.integration-spec.ts` prüfen die tatsächliche PostgreSQL-Row-Level-Security-Durchsetzung (nicht nur Prisma-`where`-Filter) gegen eine echte PostgreSQL-Instanz. Nicht Teil von `pnpm test` (kein Postgres in der Standard-CI) — Aufruf explizit mit sowohl `DATABASE_URL` (App-Rolle) als auch `ADMIN_DATABASE_URL` (Superuser, nur für Test-Fixtures) gesetzt:
+
+```bash
+DATABASE_URL=postgresql://verevia_app:change-me@localhost:5432/verevia \
+ADMIN_DATABASE_URL=postgresql://verevia:change-me@localhost:5432/verevia \
+BETTER_AUTH_SECRET=<lokales-secret> \
+  pnpm --filter @verevia/database test:integration
+```
 
 ## Entwicklung
 

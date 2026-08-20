@@ -8,22 +8,34 @@ Zentrales Paket für den Datenbankzugriff, gemeinsam genutzt von `apps/api` (und
 
 ## Status
 
-Technisches Skeleton (Phase 1). **Bewusst noch kein fachliches Datenmodell** — kein `Tenant`, `Person`, `Membership`, `RoleAssignment`, `PersonRelationship`, Turniermodell. Diese folgen in einem eigenen Arbeitspaket auf Basis von [Database.md](../../docs/database/Database.md) und [ARCHITEKTUR_FINALISIERUNG.md](../../docs/ARCHITEKTUR_FINALISIERUNG.md).
+Core-Datenmodell implementiert (Phase 2): `Tenant`, `Department`, `Team`, `Person`, `User`/`Session`/`Account`/`Verification` (better-auth), `Membership`, `RoleAssignment`, `PlatformRoleAssignment`, `PersonRelationship` — inklusive PostgreSQL Row-Level-Security und CHECK-Constraints. Details: [PHASE_2_CORE_REPORT.md](../../docs/PHASE_2_CORE_REPORT.md).
 
-Enthält aktuell nur:
+**Noch nicht enthalten:** fachliche Module (Season/Event/Attendance/Task/Tournament/Match/Venue/Notification/AuditLog/JointTeam) — eigenes, künftiges Arbeitspaket.
 
-- Prisma-Grundkonfiguration (`prisma/schema.prisma`, PostgreSQL, Prisma **^6.x** — bewusst nicht 7, siehe [ADR 0002](../../docs/architecture/adr/0002-authentication-strategy.md))
-- ein Platzhalter-Modell (`HealthCheck`), um die Pipeline (`generate`/`db push`/Client) technisch zu verifizieren
-- einen `PrismaClient`-Singleton-Export (`src/index.ts`) — **noch ohne** die in `ARCHITEKTUR_FINALISIERUNG.md` (Abschnitt 7) spezifizierte `TenantPrismaService`-Transaktions-/RLS-Kopplung
+Prisma ist bewusst auf **^6.x** gepinnt (nicht 7), siehe [ADR 0002](../../docs/architecture/adr/0002-authentication-strategy.md).
+
+## Zwei Datenbank-Rollen (wichtig)
+
+- **Migrationen** laufen über die Superuser-Rolle (`POSTGRES_USER` aus `docker-compose.yml`).
+- **Laufende Anwendung und alle Tests** verbinden über die separate, nicht-privilegierte Rolle `verevia_app` (angelegt durch die Migration `add_non_superuser_app_role`) — PostgreSQL-Superuser umgehen Row-Level-Security grundsätzlich, siehe [Multi-Tenancy.md](../../docs/architecture/Multi-Tenancy.md).
+
+## Exports
+
+- `prisma` — globaler Client, nur für die nicht-tenant-gebundenen Modelle (`User`, `Session`, `Account`, `Verification`, `PlatformRoleAssignment`).
+- `getTenantPrisma(tenantId)` — tenant-sicherer Client für alle tenant-gebundenen Modelle (`Department`, `Team`, `Person`, `RoleAssignment`, `PersonRelationship`), setzt `app.tenant_id` transaktional vor jeder Operation.
+- `runWithTenantContext(context, fn)` / `getTenantContext()` — `AsyncLocalStorage`-basierte Tenant-Kontext-Propagation für Anwendungscode (z. B. NestJS-Interceptor).
+- `createAdminPrismaForTests()` — Superuser-Client, ausschließlich für Test-Fixtures.
 
 ## Befehle
 
 ```bash
-pnpm db:generate   # Prisma Client generieren
-pnpm db:push        # Schema gegen die lokale Dev-Datenbank pushen (siehe infrastructure/docker)
-pnpm db:studio       # Prisma Studio
+pnpm db:generate       # Prisma Client generieren
+pnpm db:push            # Schema-Änderungen ohne Migration pushen (Superuser-Rolle)
+pnpm db:studio           # Prisma Studio
+pnpm db:seed              # Development-Seed (TSV Benediktbeuern, Abteilung Fußball, 2 fiktive Demo-Personen)
+pnpm test:integration      # RLS-Integrationstests gegen echtes PostgreSQL (siehe docs/DEVELOPMENT.md)
 ```
 
 ## Environment
 
-Benötigt `DATABASE_URL` (siehe `.env.example` im Repo-Root).
+Benötigt `DATABASE_URL` (App-Rolle `verevia_app`, siehe `.env.example` im Repo-Root). Für Migrationen/Seed/Integrationstests zusätzlich die Superuser-Verbindung (`ADMIN_DATABASE_URL` bei Tests, sonst direkt beim CLI-Aufruf).

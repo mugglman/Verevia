@@ -1,0 +1,178 @@
+import { PrismaClient } from "@prisma/client";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getTenantPrisma } from "../tenant-prisma";
+import { createAdminPrismaForTests } from "../test-utils";
+
+/**
+ * Real PostgreSQL RLS integration tests, per docs/ARCHITEKTUR_FINALISIERUNG.md
+ * section 8 and the Phase 2 work order, section 21 ("KRITISCH").
+ *
+ * These tests exercise the actual PostgreSQL row-level-security policies
+ * from prisma/migrations/20260817150231_add_rls_and_scope_constraint —
+ * NOT just Prisma-level `where` filters. They run against a real database
+ * (DATABASE_URL must point at the restricted, non-superuser `verevia_app`
+ * role for RLS to have any effect at all — see
+ * prisma/migrations/20260817150935_add_non_superuser_app_role) and are
+ * therefore intentionally NOT part of the default `pnpm test` run (no
+ * PostgreSQL instance is available in the standard quality-gate/CI
+ * environment yet). Run explicitly via `pnpm test:integration` against a
+ * reachable PostgreSQL 17 instance.
+ */
+
+const rawPrisma = new PrismaClient(); // uses DATABASE_URL — must be the restricted verevia_app role
+const adminPrisma = createAdminPrismaForTests(); // superuser — fixture setup/teardown only, bypasses RLS
+
+let tenantAId: string;
+let tenantBId: string;
+let personAId: string;
+let personBId: string;
+
+beforeAll(async () => {
+  const tenantA = await adminPrisma.tenant.create({
+    data: { name: "RLS Test Tenant A", slug: `rls-test-a-${Date.now()}` },
+  });
+  const tenantB = await adminPrisma.tenant.create({
+    data: { name: "RLS Test Tenant B", slug: `rls-test-b-${Date.now()}` },
+  });
+  tenantAId = tenantA.id;
+  tenantBId = tenantB.id;
+
+  const personA = await adminPrisma.person.create({
+    data: { tenantId: tenantAId, firstName: "Person", lastName: "A" },
+  });
+  const personB = await adminPrisma.person.create({
+    data: { tenantId: tenantBId, firstName: "Person", lastName: "B" },
+  });
+  personAId = personA.id;
+  personBId = personB.id;
+});
+
+afterAll(async () => {
+  await adminPrisma.person.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } });
+  await adminPrisma.tenant.deleteMany({ where: { id: { in: [tenantAId, tenantBId] } } });
+  await adminPrisma.$disconnect();
+  await rawPrisma.$disconnect();
+});
+
+describe("PostgreSQL RLS — tenant isolation (Person)", () => {
+  it("Tenant A sees Person A", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const person = await db.person.findUnique({ where: { id: personAId } });
+    expect(person).not.toBeNull();
+    expect(person?.id).toBe(personAId);
+  });
+
+  it("Tenant A does NOT see Person B", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const person = await db.person.findUnique({ where: { id: personBId } });
+    expect(person).toBeNull();
+  });
+
+  it("Tenant B sees Person B", async () => {
+    const db = getTenantPrisma(tenantBId);
+    const person = await db.person.findUnique({ where: { id: personBId } });
+    expect(person).not.toBeNull();
+    expect(person?.id).toBe(personBId);
+  });
+
+  it("Tenant B does NOT see Person A", async () => {
+    const db = getTenantPrisma(tenantBId);
+    const person = await db.person.findUnique({ where: { id: personAId } });
+    expect(person).toBeNull();
+  });
+
+  it("findMany() scoped to Tenant A returns exactly Tenant A's rows", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const persons = await db.person.findMany({
+      where: { id: { in: [personAId, personBId] } },
+    });
+    expect(persons.map((p) => p.id)).toEqual([personAId]);
+  });
+});
+
+describe("PostgreSQL RLS — fail-closed without tenant context", () => {
+  it("a connection with no app.tenant_id set sees NO tenant-bound rows", async () => {
+    const persons = await rawPrisma.person.findMany({
+      where: { id: { in: [personAId, personBId] } },
+    });
+    expect(persons).toHaveLength(0);
+  });
+});
+
+describe("PostgreSQL RLS — cross-tenant write protection", () => {
+  it("INSERT with a tenantId that does not match the active context is rejected", async () => {
+    const db = getTenantPrisma(tenantAId);
+    await expect(
+      db.person.create({
+        data: { tenantId: tenantBId, firstName: "Should", lastName: "Fail" },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("UPDATE across tenants affects no row (Tenant A cannot update Person B)", async () => {
+    const db = getTenantPrisma(tenantAId);
+    await expect(
+      db.person.update({
+        where: { id: personBId },
+        data: { lastName: "Hijacked" },
+      }),
+    ).rejects.toThrow();
+
+    // Person B is unchanged when read back by its own tenant.
+    const dbB = getTenantPrisma(tenantBId);
+    const stillB = await dbB.person.findUnique({ where: { id: personBId } });
+    expect(stillB?.lastName).toBe("B");
+  });
+
+  it("DELETE across tenants affects no row (Tenant B cannot delete Person A)", async () => {
+    const db = getTenantPrisma(tenantBId);
+    await expect(db.person.delete({ where: { id: personAId } })).rejects.toThrow();
+
+    // Person A still exists when read back by its own tenant.
+    const dbA = getTenantPrisma(tenantAId);
+    const stillA = await dbA.person.findUnique({ where: { id: personAId } });
+    expect(stillA).not.toBeNull();
+  });
+});
+
+describe("RoleAssignment scope CHECK constraint", () => {
+  it("rejects TEAM scope without teamId", async () => {
+    const db = getTenantPrisma(tenantAId);
+    await expect(
+      db.roleAssignment.create({
+        data: {
+          tenantId: tenantAId,
+          personId: personAId,
+          role: "MEMBER",
+          scopeType: "TEAM",
+          // teamId intentionally omitted — must violate the CHECK constraint
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects TENANT scope with a departmentId set", async () => {
+    const db = getTenantPrisma(tenantAId);
+    await expect(
+      adminPrisma.$executeRaw`
+        INSERT INTO "role_assignment" (id, "tenantId", "personId", role, "scopeType", "departmentId", "createdAt")
+        VALUES (gen_random_uuid()::text, ${tenantAId}, ${personAId}, 'MEMBER', 'TENANT', gen_random_uuid()::text, now())
+      `,
+    ).rejects.toThrow();
+  });
+
+  it("accepts a valid TENANT-scope RoleAssignment", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const assignment = await db.roleAssignment.create({
+      data: {
+        tenantId: tenantAId,
+        personId: personAId,
+        role: "MEMBER",
+        scopeType: "TENANT",
+      },
+    });
+    expect(assignment.scopeType).toBe("TENANT");
+
+    await adminPrisma.roleAssignment.delete({ where: { id: assignment.id } });
+  });
+});
