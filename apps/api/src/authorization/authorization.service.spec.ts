@@ -192,3 +192,44 @@ describe("AuthorizationService — Team members", () => {
     ).toBe(false);
   });
 });
+
+describe("AuthorizationService — Role management", () => {
+  it("TENANT_ADMIN can manage role assignments", () => {
+    expect(authz.canManageRoleAssignments(tenantAdmin())).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN cannot manage role assignments", () => {
+    expect(authz.canManageRoleAssignments(departmentAdmin(DEPT_FOOTBALL))).toBe(false);
+  });
+
+  it("COACH cannot manage role assignments", () => {
+    expect(authz.canManageRoleAssignments(coachOfTeam(TEAM_E1, DEPT_FOOTBALL))).toBe(false);
+  });
+
+  it("no role at all cannot manage role assignments", () => {
+    expect(authz.canManageRoleAssignments([])).toBe(false);
+  });
+});
+
+describe("AuthorizationService — getManagedDepartmentIds", () => {
+  it("TENANT_ADMIN has no managed-department restriction (empty list)", () => {
+    expect(authz.getManagedDepartmentIds(tenantAdmin())).toEqual([]);
+  });
+
+  it("DEPARTMENT_ADMIN Fußball is restricted to Fußball", () => {
+    expect(authz.getManagedDepartmentIds(departmentAdmin(DEPT_FOOTBALL))).toEqual([
+      DEPT_FOOTBALL,
+    ]);
+  });
+
+  it("DEPARTMENT_ADMIN of two departments is restricted to both", () => {
+    const assignments = [...departmentAdmin(DEPT_FOOTBALL), ...departmentAdmin(DEPT_TENNIS)];
+    expect(authz.getManagedDepartmentIds(assignments).sort()).toEqual(
+      [DEPT_FOOTBALL, DEPT_TENNIS].sort(),
+    );
+  });
+
+  it("COACH has no managed departments", () => {
+    expect(authz.getManagedDepartmentIds(coachOfTeam(TEAM_E1, DEPT_FOOTBALL))).toEqual([]);
+  });
+});

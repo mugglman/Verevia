@@ -7,6 +7,8 @@
 > **Ergänzt am 2026-08-17 (Phase 2):** `Role` ist im implementierten Schema ein Prisma-**Enum** mit dem in [Roles-and-Permissions.md](../product/Roles-and-Permissions.md) festgelegten, festen Rollenkatalog — keine eigene, dynamisch pflegbare `Role`/`Permission`-Datenbanktabelle. Das ist eine konkrete Implementierungsentscheidung dieser Phase (kein Widerspruch zu einer ACCEPTED-Architekturentscheidung, da keine der ADRs eine dynamische Rollentabelle vorschreibt), begründet durch den bewusst festen, plattformweiten Rollenkatalog ohne aktuellen Bedarf an vereinsindividuellen Rollen.
 >
 > **Ergänzt am 2026-08-20 (Phase 4):** Neue Entität `TeamMember` bildet die fachliche Mannschaftszugehörigkeit ab (`Person` ↔ `Team`) — siehe Abschnitt "Drei getrennte Konzepte: Membership, TeamMember, RoleAssignment" unten für die Abgrenzung zu `Membership` und `RoleAssignment`.
+>
+> **Ergänzt am 2026-08-20 (Phase 5):** `RoleAssignment` ist erstmals über die Anwendung verwaltbar (`persons/:personId/roles`-API + Personenverwaltung im Web). Neu: ein funktionaler Unique-Index verhindert identische doppelte Zuweisungen (siehe RoleAssignment-Zeile unten), und die Zuordnung "welche `Role` erfordert welchen Scope" (bereits in [Roles-and-Permissions.md](../product/Roles-and-Permissions.md) dokumentiert) wird nun auch applikationsseitig durchgesetzt.
 
 ## Zweck
 
@@ -24,7 +26,7 @@ Dieses Dokument beschreibt den fachlichen Entwurf des Datenmodells von Verevia. 
 | User | Ein technischer Login-Account. **Nicht** mandantenbezogen, enthält ausschließlich Auth-relevante Daten (E-Mail, Passwort-Hash, Verifizierungsstatus). Kann über `Membership` mit `Person`-Datensätzen in mehreren Vereinen verknüpft sein. Existiert unabhängig davon, ob eine Person tatsächlich einen Account hat. |
 | Person (Mitglied) | Eine natürliche Person als Vereinsmitglied, **mandantenbezogen** (`tenantId` Pflichtfeld), unabhängig davon, ob sie einen `User`-Account besitzt. Trägerin aller fachlichen Verknüpfungen (Rollen, Beziehungen, Anwesenheit). |
 | Membership | Reine Verknüpfung zwischen `User` (Login) und `Person` (Vereinsmitglied) — **kein Rollenträger**. Bedeutet "dieser Login-Account ist diese Person". Rollen hängen an `Person`, siehe `RoleAssignment`. |
-| RoleAssignment | Verknüpft eine `Person` mit einer `Role` in einem konkreten Scope (`TENANT`, `DEPARTMENT` oder `TEAM`, über nullable Fremdschlüssel `departmentId`/`teamId`). Eine Person kann beliebig viele `RoleAssignment`s in unterschiedlichen Scopes gleichzeitig besitzen. |
+| RoleAssignment | Verknüpft eine `Person` mit einer `Role` in einem konkreten Scope (`TENANT`, `DEPARTMENT` oder `TEAM`, über nullable Fremdschlüssel `departmentId`/`teamId`). Eine Person kann beliebig viele `RoleAssignment`s in unterschiedlichen Scopes gleichzeitig besitzen. Eine identische Zuweisung (gleiche Person/Rolle/Scope/Department/Team) kann nicht doppelt existieren (Unique-Index, Phase 5). |
 | Role | Eine Rolle innerhalb eines Vereins (z. B. Trainer, Vereinsadministrator), einsetzbar über `RoleAssignment` mit beliebigem Scope. |
 | Permission | Eine einzelne Berechtigung, die einer Rolle zugeordnet werden kann. |
 | PlatformRoleAssignment | Verknüpft einen `User` direkt (ohne Umweg über `Person`/Tenant) mit einer mandantenübergreifenden Plattformrolle (`Platform Owner/Administrator/Support`). |

@@ -135,4 +135,30 @@ export class AuthorizationService {
     if (action === "read") return this.canListPersons(roleAssignments);
     return this.isTenantAdmin(roleAssignments);
   }
+
+  /**
+   * Granting/revoking RoleAssignments is TENANT_ADMIN-only in this phase
+   * (Phase 5, section 12) — deliberately, to avoid delegation/privilege-
+   * escalation complexity (a DEPARTMENT_ADMIN granting DEPARTMENT_ADMIN to
+   * someone else, etc.). Reading a person's roles follows the same rule:
+   * role/permission data is itself sensitive, scoped no wider than the
+   * management capability.
+   */
+  canManageRoleAssignments(roleAssignments: AuthorizationRoleAssignment[]): boolean {
+    return this.isTenantAdmin(roleAssignments);
+  }
+
+  /**
+   * Department IDs the caller administers (DEPARTMENT_ADMIN scope) — used
+   * to scope the Person list to persons associated with the caller's own
+   * department(s) via TeamMember (Phase 5, section 24: DEPARTMENT_ADMIN
+   * must not see the whole tenant's persons). Empty for TENANT_ADMIN
+   * (unrestricted) and for roles without DEPARTMENT_ADMIN.
+   */
+  getManagedDepartmentIds(roleAssignments: AuthorizationRoleAssignment[]): string[] {
+    return roleAssignments
+      .filter((ra) => ra.scopeType === "DEPARTMENT" && ra.role === "DEPARTMENT_ADMIN")
+      .map((ra) => ra.departmentId)
+      .filter((id): id is string => id !== null);
+  }
 }

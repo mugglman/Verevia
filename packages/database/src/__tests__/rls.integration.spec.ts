@@ -252,3 +252,47 @@ describe("PostgreSQL RLS — tenant isolation (TeamMember)", () => {
     expect(stillActive?.status).toBe("ACTIVE");
   });
 });
+
+describe("RoleAssignment uniqueness (migration 20260820142846_add_role_assignment_uniqueness)", () => {
+  it("rejects an identical duplicate TEAM-scope RoleAssignment (same person/role/team)", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const first = await db.roleAssignment.create({
+      data: { tenantId: tenantAId, personId: personAId, role: "COACH", scopeType: "TEAM", teamId: teamAId },
+    });
+    await expect(
+      db.roleAssignment.create({
+        data: { tenantId: tenantAId, personId: personAId, role: "COACH", scopeType: "TEAM", teamId: teamAId },
+      }),
+    ).rejects.toThrow();
+    await adminPrisma.roleAssignment.delete({ where: { id: first.id } });
+  });
+
+  it("rejects an identical duplicate TENANT-scope RoleAssignment (both departmentId/teamId NULL)", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const first = await db.roleAssignment.create({
+      data: { tenantId: tenantAId, personId: personAId, role: "TENANT_ADMIN", scopeType: "TENANT" },
+    });
+    await expect(
+      db.roleAssignment.create({
+        data: { tenantId: tenantAId, personId: personAId, role: "TENANT_ADMIN", scopeType: "TENANT" },
+      }),
+    ).rejects.toThrow();
+    await adminPrisma.roleAssignment.delete({ where: { id: first.id } });
+  });
+
+  it("allows the same role for the same person in two DIFFERENT teams", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const other = await adminPrisma.team.create({
+      data: { tenantId: tenantAId, departmentId: (await adminPrisma.team.findUniqueOrThrow({ where: { id: teamAId } })).departmentId, name: "Team A2" },
+    });
+    const first = await db.roleAssignment.create({
+      data: { tenantId: tenantAId, personId: personAId, role: "COACH", scopeType: "TEAM", teamId: teamAId },
+    });
+    const second = await db.roleAssignment.create({
+      data: { tenantId: tenantAId, personId: personAId, role: "COACH", scopeType: "TEAM", teamId: other.id },
+    });
+    expect(second.teamId).toBe(other.id);
+    await adminPrisma.roleAssignment.deleteMany({ where: { id: { in: [first.id, second.id] } } });
+    await adminPrisma.team.delete({ where: { id: other.id } });
+  });
+});

@@ -3,6 +3,8 @@
 > Status: Entwurf. Dies ist eine kompakte Rollenübersicht, noch keine vollständige Berechtigungsmatrix.
 >
 > **Synchronisiert am 2026-08-17** mit [AUTH_IDENTITY_RBAC_ARCHITEKTUR.md](../AUTH_IDENTITY_RBAC_ARCHITEKTUR.md) und [ARCHITEKTUR_FINALISIERUNG.md](../ARCHITEKTUR_FINALISIERUNG.md). Der vollständige Permission-Katalog befindet sich in `ARCHITEKTUR_FINALISIERUNG.md`, Abschnitt 5.
+>
+> **Ergänzt am 2026-08-20 (Phase 5):** Vereinsrollen sind erstmals über die Anwendung verwaltbar (`GET/POST /api/v1/persons/:personId/roles`, `DELETE .../roles/:roleAssignmentId`, Web-UI in der Personenverwaltung) — ausschließlich durch `TENANT_ADMIN` des eigenen Vereins, siehe [PHASE_5_ROLE_MANAGEMENT_REPORT.md](../PHASE_5_ROLE_MANAGEMENT_REPORT.md). Die Scope-Spalte der Vereinsrollen-Tabelle unten ist dabei kein reiner Fachhinweis mehr, sondern wird applikationsseitig durchgesetzt (eine Rolle kann nur mit ihrem dokumentierten Scope vergeben werden). Weiterhin **nicht** verwaltbar: Plattformrollen (`PlatformRoleAssignment`, siehe unten) und individuelle Einzelberechtigungen (kein Permission-Editor).
 
 ## Grundprinzipien
 
