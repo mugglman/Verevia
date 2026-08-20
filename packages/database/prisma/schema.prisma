@@ -274,12 +274,21 @@ model Person {
   relationshipsAsChild    PersonRelationship[] @relation("RelationshipToPerson")
   verifiedRelationships   PersonRelationship[] @relation("RelationshipVerifiedBy")
 
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("person")
 }
 
 /// Verknüpft einen globalen Login-Account (`User`) mit einer mandantenbezogenen
 /// Person ("dieser Login ist diese Person"). Kein Rollenträger, siehe ADR 0003.
+///
+/// Cross-Tenant-Konsistenz geprüft (Phase 3): `Membership` trägt bewusst
+/// KEIN eigenes `tenantId` (globale Identitätsebene, siehe
+/// docs/ARCHITEKTUR_FINALISIERUNG.md Abschnitt 8) und hat daher keinen
+/// eigenen Tenant-Anspruch, der zu `person.tenantId` inkonsistent werden
+/// könnte — ein Composite-FK ist hier weder möglich noch nötig. Die
+/// Konsistenz ist strukturell gegeben: welchem Tenant eine Membership
+/// "angehört" ergibt sich ausschließlich aus der referenzierten Person.
 model Membership {
   id        String           @id @default(uuid())
   userId    String
@@ -301,23 +310,34 @@ model Membership {
 /// erzwungen, da Prisma 6 mehrspaltige CHECK-Constraints nicht deklarativ
 /// unterstützt.
 ///
-/// Cross-Tenant-Konsistenz von `departmentId`/`teamId` (verhindert, dass
-/// eine RoleAssignment mit `tenantId=A` auf eine Department/Team mit
-/// `tenantId=B` zeigt) wird NICHT per Trigger, sondern per Composite
-/// Foreign Key durchgesetzt: `department`/`team` referenzieren
-/// `(tenantId, id)` statt nur `id`. PostgreSQL wendet dabei MATCH SIMPLE
-/// an — ist eine der referenzierenden Spalten NULL (z. B. `departmentId`
-/// bei TENANT-Scope), gilt der Constraint automatisch als erfüllt; ist
-/// `departmentId` gesetzt, muss eine Department mit exakt diesem `id`
-/// UND demselben `tenantId` existieren. Siehe
-/// docs/PHASE_2_CORE_REPORT.md, Abschnitt 20/21 (dort noch als offene
-/// Schuld geführt) und docs/PHASE_3_CORE_HARDENING_REPORT.md.
+/// Cross-Tenant-Konsistenz von `personId`/`departmentId`/`teamId` (verhindert,
+/// dass eine RoleAssignment mit `tenantId=A` auf eine Person/Department/Team
+/// mit `tenantId=B` zeigt) wird NICHT per Trigger, sondern durchgängig per
+/// Composite Foreign Key durchgesetzt: `person`/`department`/`team`
+/// referenzieren jeweils `(tenantId, id)` statt nur `id`. PostgreSQL wendet
+/// dabei MATCH SIMPLE an — ist eine der referenzierenden Spalten NULL (z. B.
+/// `departmentId` bei TENANT-Scope), gilt der Constraint automatisch als
+/// erfüllt; ist die Spalte gesetzt, muss die referenzierte Zeile exakt
+/// dieselbe `tenantId` haben. Siehe docs/PHASE_2_CORE_REPORT.md, Abschnitt
+/// 20/21 und docs/PHASE_3_CLUB_STRUCTURE_REPORT.md.
+///
+/// `grantedByPersonId` bleibt bewusst eine EINFACHE (nicht-composite) FK:
+/// es ist ein rein informatives Attributionsfeld ("wer hat das vergeben"),
+/// nicht Teil der fachlichen Bedeutung der Zeile — anders als `personId`
+/// (wem die Rolle gehört) oder `departmentId`/`teamId` (welcher Scope). Ein
+/// Composite-FK wäre hier zusätzlich technisch unsauber: `ON DELETE SetNull`
+/// auf einer Composite-FK würde bei Auslösung versuchen, auch das (NOT
+/// NULL) `tenantId`-Feld zu leeren, was einen Constraint-Verstoß zur
+/// Laufzeit erzeugen würde (von Prisma selbst als Warnung angezeigt).
+/// Cross-Tenant-Werte hier werden applikationsseitig ausgeschlossen: der
+/// Wert wird ausschließlich serverseitig aus der aktuellen,
+/// Tenant-validierten Person des Aufrufers gesetzt, nie aus Client-Input.
 model RoleAssignment {
   id           String      @id @default(uuid())
   tenantId     String
   tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   personId     String
-  person       Person      @relation("PersonRoleAssignments", fields: [personId], references: [id], onDelete: Restrict)
+  person       Person      @relation("PersonRoleAssignments", fields: [tenantId, personId], references: [tenantId, id], onDelete: Restrict)
   role         Role
   scopeType    ScopeType
   departmentId String?
@@ -341,14 +361,21 @@ model RoleAssignment {
 
 /// Gerichtete, verifizierungspflichtige Beziehung zwischen zwei Personen
 /// desselben Tenants (z. B. Eltern-Kind). KEINE RBAC-Rolle, siehe ADR 0005.
+///
+/// `fromPerson`/`toPerson` referenzieren `Person` über Composite Foreign Keys
+/// `(tenantId, personId) → person(tenantId, id)` — verhindert, dass eine
+/// Beziehung tenantübergreifend zwei Personen unterschiedlicher Vereine
+/// verknüpft. `verifiedByPersonId` bleibt bewusst eine einfache FK (reines
+/// Attributionsfeld, gleiche Begründung wie `RoleAssignment.grantedByPersonId`
+/// oben — inklusive derselben `SetNull`-auf-Composite-FK-Problematik).
 model PersonRelationship {
   id              String             @id @default(uuid())
   tenantId        String
   tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   fromPersonId    String
-  fromPerson      Person             @relation("RelationshipFromPerson", fields: [fromPersonId], references: [id], onDelete: Restrict)
+  fromPerson      Person             @relation("RelationshipFromPerson", fields: [tenantId, fromPersonId], references: [tenantId, id], onDelete: Restrict)
   toPersonId      String
-  toPerson        Person             @relation("RelationshipToPerson", fields: [toPersonId], references: [id], onDelete: Restrict)
+  toPerson        Person             @relation("RelationshipToPerson", fields: [tenantId, toPersonId], references: [tenantId, id], onDelete: Restrict)
   type            RelationshipType
   status          RelationshipStatus @default(PENDING)
   isLegalGuardian Boolean            @default(false)

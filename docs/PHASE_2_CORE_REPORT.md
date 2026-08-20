@@ -162,7 +162,7 @@ Zusätzlich manuell verifiziert: kompilierter `apps/api`-Build bootet mit echter
 ## 22. Empfohlener nächster Schritt
 
 1. Diesen Bericht durchsehen und freigeben.
-2. ~~Cross-Tenant-FK-Konsistenzprüfung nachziehen~~ — erledigt in Phase 3, siehe [PHASE_3_CORE_HARDENING_REPORT.md](./PHASE_3_CORE_HARDENING_REPORT.md).
+2. ~~Cross-Tenant-FK-Konsistenzprüfung nachziehen~~ — erledigt in Phase 3, siehe [PHASE_3_CLUB_STRUCTURE_REPORT.md](./PHASE_3_CLUB_STRUCTURE_REPORT.md).
 3. Fachliches Arbeitspaket für Verein → Fußball → Mannschaften (MVP-Fokus laut `Roadmap.md`), inklusive erster Controller, die `TenantContextInterceptor` tatsächlich verwenden.
 4. `feat/core-data-model` nach main gemerged (Phase 3), siehe dort.
 
