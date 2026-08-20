@@ -219,6 +219,10 @@ model Department {
   roleAssignments RoleAssignment[]
 
   @@unique([tenantId, name])
+  // Composite-Unique (zusätzlich zum bereits eindeutigen `id`), damit
+  // Team/RoleAssignment per Composite-Foreign-Key gegen (tenantId, id)
+  // referenzieren können — siehe Kommentar an RoleAssignment weiter unten.
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("department")
 }
@@ -228,7 +232,13 @@ model Team {
   tenantId     String
   tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "team_tenant_fkey")
   departmentId String
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  // Composite FK (tenantId, departmentId) → department(tenantId, id) statt
+  // nur (departmentId) → department(id): erzwingt auf DB-Ebene, dass ein
+  // Team nur eine Department DESSELBEN Tenants referenzieren kann. Mit nur
+  // `departmentId` allein wäre ein Team mit `tenantId=A` referenzierbar auf
+  // eine Department mit `tenantId=B` — das ist der gleiche
+  // Cross-Tenant-Konsistenzfehler, der für RoleAssignment behoben wurde.
+  department   Department @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
   name         String
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -236,6 +246,7 @@ model Team {
   roleAssignments RoleAssignment[]
 
   @@unique([departmentId, name])
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@index([departmentId])
   @@map("team")
@@ -289,6 +300,18 @@ model Membership {
 /// TEAM ⇒ team gesetzt) wird per CHECK-Constraint in der SQL-Migration
 /// erzwungen, da Prisma 6 mehrspaltige CHECK-Constraints nicht deklarativ
 /// unterstützt.
+///
+/// Cross-Tenant-Konsistenz von `departmentId`/`teamId` (verhindert, dass
+/// eine RoleAssignment mit `tenantId=A` auf eine Department/Team mit
+/// `tenantId=B` zeigt) wird NICHT per Trigger, sondern per Composite
+/// Foreign Key durchgesetzt: `department`/`team` referenzieren
+/// `(tenantId, id)` statt nur `id`. PostgreSQL wendet dabei MATCH SIMPLE
+/// an — ist eine der referenzierenden Spalten NULL (z. B. `departmentId`
+/// bei TENANT-Scope), gilt der Constraint automatisch als erfüllt; ist
+/// `departmentId` gesetzt, muss eine Department mit exakt diesem `id`
+/// UND demselben `tenantId` existieren. Siehe
+/// docs/PHASE_2_CORE_REPORT.md, Abschnitt 20/21 (dort noch als offene
+/// Schuld geführt) und docs/PHASE_3_CORE_HARDENING_REPORT.md.
 model RoleAssignment {
   id           String      @id @default(uuid())
   tenantId     String
@@ -298,9 +321,9 @@ model RoleAssignment {
   role         Role
   scopeType    ScopeType
   departmentId String?
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  department   Department? @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
   teamId       String?
-  team         Team?       @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  team         Team?       @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Restrict)
   validFrom    DateTime?
   validUntil   DateTime?
 

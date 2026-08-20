@@ -148,23 +148,23 @@ Zusätzlich manuell verifiziert: kompilierter `apps/api`-Build bootet mit echter
 
 ## 20. Technische Schulden
 
-- **Kein Cross-Tenant-Referenzintegritäts-Check** für `RoleAssignment.departmentId`/`.teamId` gegen `RoleAssignment.tenantId` (Abschnitt 10) — DB-CHECK-Constraints können das nicht abbilden, erfordert einen Trigger oder eine applikationsseitige Prüfung in einem künftigen Domain-Service.
+- ~~Kein Cross-Tenant-Referenzintegritäts-Check für `RoleAssignment.departmentId`/`.teamId`~~ **Geschlossen** (Migration `20260820080847_add_cross_tenant_fk_consistency`, Composite Foreign Keys `(tenantId, departmentId) → department(tenantId, id)` bzw. `(tenantId, teamId) → team(tenantId, id)`, ebenso für `team.departmentId → department`; per Negativtests verifiziert). Details siehe Phase-3-Bericht.
 - `TenantContextInterceptor` ist implementiert und getestet, aber an **keinen** fachlichen Controller angeschlossen (kein Controller existiert).
 - `X-Tenant-Id`-Header ist ein bewusster Platzhalter-Mechanismus zur Tenant-Auswahl — die eigentlich vorgesehene Subdomain-/Session-basierte Auflösung (siehe `AUTH_IDENTITY_RBAC_ARCHITEKTUR.md`) ist noch nicht gebaut.
 - `packages/database` und `apps/api` melden weiterhin die aus Phase 1 bekannte `package.json#prisma`-Deprecation-Warnung (Migration zu `prisma.config.ts` erst mit einem künftigen Prisma-7-Wechsel relevant, siehe ADR 0002).
 
 ## 21. Sicherheitsrisiken
 
-- Die unter Abschnitt 20 genannte fehlende Cross-Tenant-FK-Konsistenzprüfung könnte theoretisch eine `RoleAssignment` erzeugen, deren `departmentId`/`teamId` zu einem anderen Tenant gehört als `tenantId` — RLS würde die Zeile selbst weiterhin korrekt nach `tenantId` isolieren, aber die *fachliche* Bedeutung der Rolle wäre inkonsistent. Vor der ersten fachlichen Rollenzuweisungs-Logik zu schließen.
+- ~~Die unter Abschnitt 20 genannte fehlende Cross-Tenant-FK-Konsistenzprüfung...~~ **Geschlossen**, siehe Abschnitt 20.
 - `verevia_app`-Passwort ist aktuell der Platzhalter `change-me` (konsistent mit den übrigen Dev-Zugangsdaten) — muss vor jeder über lokale Entwicklung hinausgehenden Umgebung zwingend geändert werden (bereits in der Migration und `.env.example` als Hinweis dokumentiert).
 - `TenantContextInterceptor` ist funktional korrekt, aber noch nirgends angeschlossen — das eigentliche Sicherheitsrisiko entsteht erst, wenn ein künftiger Controller versehentlich **ohne** diesen Interceptor auf tenant-gebundene Daten zugreift; die RLS-Schutzschicht in der Datenbank bleibt dabei die entscheidende zweite Verteidigungslinie.
 
 ## 22. Empfohlener nächster Schritt
 
 1. Diesen Bericht durchsehen und freigeben.
-2. Cross-Tenant-FK-Konsistenzprüfung für `RoleAssignment` (Trigger oder Service-Validierung) als kleines, eigenständiges Arbeitspaket nachziehen, bevor produktive Rollenzuweisungen entstehen.
-3. Danach: fachliches Arbeitspaket für Verein → Fußball → Mannschaften (MVP-Fokus laut `Roadmap.md`), inklusive erster Controller, die `TenantContextInterceptor` tatsächlich verwenden.
-4. `feat/core-data-model` erst nach eigener Freigabe/PR nach `main` mergen (bewusst nicht Teil dieses Arbeitspakets).
+2. ~~Cross-Tenant-FK-Konsistenzprüfung nachziehen~~ — erledigt in Phase 3, siehe [PHASE_3_CORE_HARDENING_REPORT.md](./PHASE_3_CORE_HARDENING_REPORT.md).
+3. Fachliches Arbeitspaket für Verein → Fußball → Mannschaften (MVP-Fokus laut `Roadmap.md`), inklusive erster Controller, die `TenantContextInterceptor` tatsächlich verwenden.
+4. `feat/core-data-model` nach main gemerged (Phase 3), siehe dort.
 
 ## Bezug
 
