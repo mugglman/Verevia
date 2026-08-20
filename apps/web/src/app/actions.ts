@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { apiFetch } from "@/lib/api";
+import type { RoleName } from "@/lib/roles";
+import { ROLE_SCOPE } from "@/lib/roles";
 import { resolvePilotTenantId } from "@/lib/tenant";
 
 async function requireTenantId(): Promise<string> {
@@ -98,6 +100,34 @@ export async function updatePersonAction(personId: string, formData: FormData) {
   await apiFetch(`/api/v1/persons/${personId}`, tenantId, {
     method: "PATCH",
     body: JSON.stringify({ firstName, lastName }),
+  });
+  revalidatePath("/personen");
+}
+
+export async function grantRoleAction(personId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const role = String(formData.get("role") ?? "") as RoleName;
+  // scopeType is derived server-side from the chosen role, never trusted
+  // from the client — mirrors the same rule the API itself enforces.
+  const scopeType = ROLE_SCOPE[role];
+  const departmentId = formData.get("departmentId");
+  const teamId = formData.get("teamId");
+  await apiFetch(`/api/v1/persons/${personId}/roles`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({
+      role,
+      scopeType,
+      ...(scopeType === "DEPARTMENT" && departmentId ? { departmentId: String(departmentId) } : {}),
+      ...(scopeType === "TEAM" && teamId ? { teamId: String(teamId) } : {}),
+    }),
+  });
+  revalidatePath("/personen");
+}
+
+export async function revokeRoleAction(personId: string, roleAssignmentId: string) {
+  const tenantId = await requireTenantId();
+  await apiFetch(`/api/v1/persons/${personId}/roles/${roleAssignmentId}`, tenantId, {
+    method: "DELETE",
   });
   revalidatePath("/personen");
 }

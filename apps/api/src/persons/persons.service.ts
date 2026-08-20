@@ -70,7 +70,22 @@ export class PersonsService {
     }
     const canEdit = this.authz.canOnPerson(assignments, "update");
     const db = getTenantPrisma(context.tenantId);
-    const persons = await db.person.findMany({ orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
+
+    // Phase 5, section 24: DEPARTMENT_ADMIN sees only persons associated
+    // (via TeamMember, any status) with a team of their own department(s)
+    // — not the whole tenant. A non-empty managed-department list implies
+    // the caller is a DEPARTMENT_ADMIN, not a TENANT_ADMIN (canListPersons
+    // above already rejected anyone else); TENANT_ADMIN stays unrestricted.
+    const managedDepartmentIds = this.authz.getManagedDepartmentIds(assignments);
+    const where =
+      managedDepartmentIds.length > 0
+        ? { teamMemberships: { some: { team: { departmentId: { in: managedDepartmentIds } } } } }
+        : undefined;
+
+    const persons = await db.person.findMany({
+      where,
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
     return {
       items: persons.map((p) => this.toDto(p, canEdit)),
       canCreate: this.authz.canOnPerson(assignments, "create"),

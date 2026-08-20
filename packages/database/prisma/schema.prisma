@@ -363,6 +363,15 @@ model RoleAssignment {
 
   createdAt DateTime @default(now())
 
+  // Duplicate-Schutz (Phase 5): eine identische aktive Zuweisung (gleiche
+  // Person, Rolle, Scope und ggf. Department/Team) darf nicht mehrfach
+  // existieren. Nicht als `@@unique` deklarierbar — `departmentId`/`teamId`
+  // sind nullable, und SQL behandelt NULL <> NULL, sodass ein normaler
+  // Unique-Index zwei TENANT-Scope-Zeilen derselben Person/Rolle (beide mit
+  // departmentId=teamId=NULL) NICHT als Duplikat erkennen würde. Stattdessen
+  // ein funktionaler Unique-Index mit COALESCE(..., '') in der Migration
+  // `20260821_add_role_assignment_uniqueness` (Prisma 6 unterstützt
+  // Expression-Indizes nicht deklarativ).
   @@index([tenantId])
   @@index([personId])
   @@index([departmentId])
