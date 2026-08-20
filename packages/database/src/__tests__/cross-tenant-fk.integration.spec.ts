@@ -25,6 +25,7 @@ let departmentBId: string;
 let teamAId: string;
 let teamBId: string;
 let personAId: string;
+let personBId: string;
 
 beforeAll(async () => {
   const tenantA = await adminPrisma.tenant.create({
@@ -58,9 +59,17 @@ beforeAll(async () => {
     data: { tenantId: tenantAId, firstName: "Person", lastName: "A" },
   });
   personAId = personA.id;
+
+  const personB = await adminPrisma.person.create({
+    data: { tenantId: tenantBId, firstName: "Person", lastName: "B" },
+  });
+  personBId = personB.id;
 });
 
 afterAll(async () => {
+  await adminPrisma.teamMember.deleteMany({
+    where: { tenantId: { in: [tenantAId, tenantBId] } },
+  });
   await adminPrisma.roleAssignment.deleteMany({
     where: { tenantId: { in: [tenantAId, tenantBId] } },
   });
@@ -154,5 +163,62 @@ describe("Cross-tenant FK consistency — RoleAssignment → Team", () => {
     });
     expect(assignment.teamId).toBe(teamAId);
     await adminPrisma.roleAssignment.delete({ where: { id: assignment.id } });
+  });
+});
+
+describe("Cross-tenant FK consistency — TeamMember → Person/Team", () => {
+  it("accepts a TeamMember where Person and Team both belong to the SAME tenant", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const member = await db.teamMember.create({
+      data: { tenantId: tenantAId, personId: personAId, teamId: teamAId },
+    });
+    expect(member.personId).toBe(personAId);
+    expect(member.teamId).toBe(teamAId);
+    await adminPrisma.teamMember.delete({ where: { id: member.id } });
+  });
+
+  it("rejects a TeamMember with tenantId=A but personId belonging to tenant B", async () => {
+    const db = getTenantPrisma(tenantAId);
+    await expect(
+      db.teamMember.create({
+        data: { tenantId: tenantAId, personId: personBId, teamId: teamAId },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a TeamMember with tenantId=A but teamId belonging to tenant B", async () => {
+    const db = getTenantPrisma(tenantAId);
+    await expect(
+      db.teamMember.create({
+        data: { tenantId: tenantAId, personId: personAId, teamId: teamBId },
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("TeamMember — no duplicate active assignment", () => {
+  it("rejects a second ACTIVE TeamMember for the same Person/Team pair", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const first = await db.teamMember.create({
+      data: { tenantId: tenantAId, personId: personAId, teamId: teamAId },
+    });
+    await expect(
+      db.teamMember.create({
+        data: { tenantId: tenantAId, personId: personAId, teamId: teamAId },
+      }),
+    ).rejects.toThrow();
+    await adminPrisma.teamMember.delete({ where: { id: first.id } });
+  });
+
+  it("allows a new ACTIVE TeamMember after the previous one was deactivated", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const first = await db.teamMember.create({
+      data: { tenantId: tenantAId, personId: personAId, teamId: teamAId, status: "INACTIVE" },
+    });
+    const second = await db.teamMember.create({
+      data: { tenantId: tenantAId, personId: personAId, teamId: teamAId },
+    });
+    expect(second.status).toBe("ACTIVE");
+    await adminPrisma.teamMember.deleteMany({ where: { id: { in: [first.id, second.id] } } });
   });
 });

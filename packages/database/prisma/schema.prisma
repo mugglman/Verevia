@@ -87,6 +87,14 @@ enum RelationshipStatus {
   REVOKED
 }
 
+/// Lebenszyklus einer TeamMember-Zeile — bewusst nur zwei Zustände, keine
+/// weitergehende Historisierung (kein validFrom/validUntil, kein Audit-Log)
+/// in dieser Phase, siehe TeamMember-Kommentar.
+enum TeamMemberStatus {
+  ACTIVE
+  INACTIVE
+}
+
 // ---------------------------------------------------------------------------
 // better-auth-eigene Modelle (generiert via `npx @better-auth/cli generate`,
 // siehe packages/auth/src/index.ts). `User` ist um das domänenspezifische
@@ -203,6 +211,7 @@ model Tenant {
   roleAssignments     RoleAssignment[]
   personRelationships PersonRelationship[]
   teams               Team[]
+  teamMembers         TeamMember[]
 
   @@map("tenant")
 }
@@ -244,6 +253,7 @@ model Team {
   updatedAt    DateTime   @updatedAt
 
   roleAssignments RoleAssignment[]
+  teamMembers     TeamMember[]
 
   @@unique([departmentId, name])
   @@unique([tenantId, id])
@@ -273,6 +283,7 @@ model Person {
   relationshipsAsGuardian PersonRelationship[] @relation("RelationshipFromPerson")
   relationshipsAsChild    PersonRelationship[] @relation("RelationshipToPerson")
   verifiedRelationships   PersonRelationship[] @relation("RelationshipVerifiedBy")
+  teamMemberships         TeamMember[]         @relation("PersonTeamMemberships")
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -393,4 +404,65 @@ model PersonRelationship {
   @@index([fromPersonId])
   @@index([toPersonId])
   @@map("person_relationship")
+}
+
+/// Fachliche Mannschaftszugehörigkeit — "diese Person gehört zu dieser
+/// Mannschaft" — und ausdrücklich NICHTS sonst. Drei separate, bewusst
+/// nicht vermischte Konzepte im Datenmodell (siehe docs/database/Database.md):
+///
+///   - `Membership`      = Login-Zuordnung (welcher `User` ist welche `Person`)
+///   - `TeamMember`       = fachliche Mannschaftszugehörigkeit (dieses Modell)
+///   - `RoleAssignment`   = Berechtigung (was darf diese Person tun)
+///
+/// Ein Spieler hat nur `TeamMember`. Ein Trainer hat zusätzlich eine
+/// `RoleAssignment(role: COACH, scopeType: TEAM, teamId: ...)` — beide
+/// Zeilen existieren unabhängig voneinander; das Entfernen der einen
+/// berührt die andere nicht.
+///
+/// Namensentscheidung: nicht `TeamMembership`, obwohl das Arbeitspaket
+/// diesen Namen als Arbeitsbezeichnung vorschlug. `TeamMembership` würde im
+/// selben Schema neben dem bereits existierenden, semantisch komplett
+/// anderen `Membership`-Modell (Login-Bindung, siehe oben) stehen — beide
+/// mit identischem "-ship"-Suffix, beide potenziell in denselben
+/// Log-Zeilen/Fehlermeldungen/Code-Reviews auftauchend. Genau diese
+/// Verwechslungsgefahr sollte laut Auftrag ausgeschlossen werden.
+/// `TeamAssignment` wurde ebenfalls verworfen: `RoleAssignment` deckt
+/// bereits `scopeType: TEAM` ab, ein `TeamAssignment` läge fachlich
+/// gefährlich nah an "RoleAssignment mit Team-Scope". `TeamMember` trägt
+/// keines der beiden kollidierenden Suffixe, liest sich als das, was es
+/// ist (ein Eintrag im Kader einer Mannschaft), und deckt sich mit der im
+/// Auftrag bereits vorgegebenen REST-Vokabel `/teams/:teamId/members`.
+///
+/// Cross-Tenant-Konsistenz nach demselben Muster wie RoleAssignment/
+/// PersonRelationship (Phase 3): `person`/`team` referenzieren jeweils
+/// `(tenantId, id)` statt nur `id` (Composite FK, PostgreSQL MATCH SIMPLE).
+///
+/// `status` (ACTIVE/INACTIVE) statt Hard-Delete: `DELETE
+/// /api/v1/teams/:teamId/members/:personId` setzt `status = INACTIVE`
+/// statt die Zeile zu löschen — damit bleibt nachvollziehbar, dass eine
+/// Person einmal Teil der Mannschaft war (z. B. Spieler, der die Mannschaft
+/// mitten in der Saison verlässt), ohne eine vollständige
+/// Historisierung (validFrom/validUntil, Audit-Log) einzuführen. Die
+/// Unique-Regel "keine doppelte AKTIVE Zuordnung derselben Person zur
+/// selben Mannschaft" ist deshalb ein PARTIELLER Unique-Index nur auf
+/// `status = 'ACTIVE'` (Prisma 6 unterstützt partielle Indizes nicht
+/// deklarativ — siehe SQL-Migration) statt eines einfachen
+/// `@@unique([personId, teamId])`, sonst könnte eine einmal inaktive
+/// Person nie wieder derselben Mannschaft hinzugefügt werden.
+model TeamMember {
+  id        String           @id @default(uuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  personId  String
+  person    Person           @relation("PersonTeamMemberships", fields: [tenantId, personId], references: [tenantId, id], onDelete: Restrict)
+  teamId    String
+  team      Team             @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Restrict)
+  status    TeamMemberStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([tenantId])
+  @@index([personId])
+  @@index([teamId])
+  @@map("team_member")
 }

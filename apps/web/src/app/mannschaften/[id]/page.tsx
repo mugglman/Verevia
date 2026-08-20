@@ -2,13 +2,34 @@ import { notFound, redirect } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { resolvePilotTenantId } from "@/lib/tenant";
 import { Nav } from "@/components/nav";
-import { TeamView, type TeamViewTeam } from "@/components/team-view";
+import {
+  TeamView,
+  type TeamViewCandidatePerson,
+  type TeamViewMember,
+  type TeamViewTeam,
+} from "@/components/team-view";
 
 export const dynamic = "force-dynamic";
 
 interface DepartmentDetailDto {
   id: string;
   name: string;
+}
+
+interface TeamMemberListResponse {
+  items: TeamViewMember[];
+  canManage: boolean;
+}
+
+interface PersonListItem {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface PersonListResponse {
+  items: PersonListItem[];
+  canCreate: boolean;
 }
 
 export default async function MannschaftPage({ params }: { params: Promise<{ id: string }> }) {
@@ -43,10 +64,32 @@ export default async function MannschaftPage({ params }: { params: Promise<{ id:
   );
   const departmentName = departmentResult.ok ? departmentResult.data.name : null;
 
+  const membersResult = await apiFetch<TeamMemberListResponse>(
+    `/api/v1/teams/${id}/members`,
+    tenantId,
+  );
+  const members = membersResult.ok ? membersResult.data.items : [];
+  const canManageMembers = membersResult.ok ? membersResult.data.canManage : false;
+
+  let candidatePersons: TeamViewCandidatePerson[] | undefined;
+  if (canManageMembers) {
+    const personsResult = await apiFetch<PersonListResponse>("/api/v1/persons", tenantId);
+    const memberIds = new Set(members.map((m) => m.personId));
+    candidatePersons = personsResult.ok
+      ? personsResult.data.items.filter((p) => !memberIds.has(p.id))
+      : [];
+  }
+
   return (
     <>
       <Nav />
-      <TeamView team={team} departmentName={departmentName} />
+      <TeamView
+        team={team}
+        departmentName={departmentName}
+        members={members}
+        canManageMembers={canManageMembers}
+        candidatePersons={candidatePersons}
+      />
     </>
   );
 }

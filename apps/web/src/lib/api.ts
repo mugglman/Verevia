@@ -38,6 +38,9 @@ export async function apiFetch<T>(
   if (!response.ok) {
     return { ok: false, status: response.status };
   }
+  if (response.status === 204) {
+    return { ok: true, data: undefined as T };
+  }
   const data = (await response.json()) as T;
   return { ok: true, data };
 }

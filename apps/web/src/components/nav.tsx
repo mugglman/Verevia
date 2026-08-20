@@ -2,8 +2,11 @@ import Link from "next/link";
 
 /**
  * Minimal navigation for this vertical slice only — Verein (Abteilungen)
- * as the single entry point, teams reached by drilling down through a
- * department. No nav items for features that don't exist yet (Turniere,
+ * as the entry point (teams reached by drilling down through a
+ * department), plus Personen (Phase 4). Personen is always shown; the page
+ * itself enforces the administrative-role restriction (403 message) rather
+ * than hiding the link, since Nav has no access to the caller's
+ * permissions. No nav items for features that don't exist yet (Turniere,
  * Kalender, Anwesenheit, Chat, Finanzen, Tennis, Stockschützen, Radsport).
  */
 export function Nav() {
@@ -21,6 +24,12 @@ export function Nav() {
           className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
         >
           Verein
+        </Link>
+        <Link
+          href="/personen"
+          className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
+        >
+          Personen
         </Link>
       </div>
     </nav>
