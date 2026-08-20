@@ -1,4 +1,11 @@
-import { Controller, Get, HttpCode, HttpStatus, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  ServiceUnavailableException,
+  VERSION_NEUTRAL,
+} from "@nestjs/common";
 import { prisma } from "@verevia/database";
 
 interface HealthResponse {
@@ -10,7 +17,10 @@ interface ReadinessResponse {
   database: "ok" | "error";
 }
 
-@Controller("health")
+// VERSION_NEUTRAL + explicit exclude from the /api prefix (see main.ts):
+// /health(/ready) is an operational healthcheck path, not a versioned
+// fachlicher Domain-Endpunkt (siehe ADR 0007).
+@Controller({ path: "health", version: VERSION_NEUTRAL })
 export class HealthController {
   @Get()
   check(): HealthResponse {

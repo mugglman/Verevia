@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { RequestMethod, ValidationPipe, VersioningType } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "@verevia/auth";
@@ -26,6 +27,28 @@ async function bootstrap() {
 
   const express = await import("express");
   app.use(express.default.json());
+
+  // Fachliche Endpunkte unter /api/v1/…, siehe ADR 0007. /health(/ready)
+  // bleibt bewusst unversioniert und ohne /api-Präfix (siehe
+  // HealthController: `version: VERSION_NEUTRAL`) — betrieblicher
+  // Healthcheck-Pfad, kein fachlicher Domain-Endpunkt.
+  app.setGlobalPrefix("api", {
+    exclude: [
+      { path: "health", method: RequestMethod.GET },
+      { path: "health/ready", method: RequestMethod.GET },
+    ],
+  });
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
+
+  // Global: unbekannte Felder werden abgelehnt (kein stillschweigendes
+  // Übernehmen), Query-/Param-Werte werden gemäß DTO-Typen transformiert.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
   await app.listen(port);

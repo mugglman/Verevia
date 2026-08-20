@@ -1,12 +1,14 @@
 import { prisma, getTenantPrisma } from "../src/index";
 
 /**
- * Minimal development seed, per the Phase 2 work order, section 23.
+ * Minimal development seed, per the Phase 2 work order section 23, extended
+ * in Phase 3 (section 29) with two demo teams ("E1"/"E2") under Fußball.
  *
  * Deliberately contains NO real personal data — the two demo persons use
  * obviously fictional, universally recognized German placeholder names
  * ("Max Mustermann" / "Erika Musterfrau"), not any real club member or
- * anyone connected to this project.
+ * anyone connected to this project. Team names ("E1"/"E2") are generic
+ * youth-team labels, not tied to any real roster.
  *
  * Tenant creation uses the plain, non-tenant-scoped `prisma` client (Tenant
  * itself carries no RLS policy, see schema.prisma). Everything below it
@@ -30,6 +32,15 @@ async function main() {
     create: { tenantId: tenant.id, name: "Fußball" },
   });
 
+  const demoTeamNames = ["E1", "E2"];
+  for (const teamName of demoTeamNames) {
+    await db.team.upsert({
+      where: { departmentId_name: { departmentId: department.id, name: teamName } },
+      update: {},
+      create: { tenantId: tenant.id, departmentId: department.id, name: teamName },
+    });
+  }
+
   const demoPersons = [
     { firstName: "Max", lastName: "Mustermann" },
     { firstName: "Erika", lastName: "Musterfrau" },
@@ -46,6 +57,7 @@ async function main() {
 
   console.log(`Seeded tenant "${tenant.name}" (${tenant.id})`);
   console.log(`Seeded department "${department.name}" (${department.id})`);
+  console.log(`Seeded ${demoTeamNames.length} teams: ${demoTeamNames.join(", ")}`);
   console.log(`Seeded ${demoPersons.length} fictional demo persons.`);
 }
 

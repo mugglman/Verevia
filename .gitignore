@@ -53,6 +53,7 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+apps/web/e2e/.auth/
 
 # Lokale Datenbanken (z. B. SQLite bei ad-hoc-Spikes) - Produktivdaten laufen ausschließlich über PostgreSQL
 *.db

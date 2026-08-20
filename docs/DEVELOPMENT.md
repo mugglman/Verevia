@@ -114,7 +114,7 @@ Alle vier Befehle laufen über Turborepo (`turbo.json`) und werden auch in [CI](
 pnpm --filter @verevia/web test:e2e
 ```
 
-Benötigt einmalig installierte Browser-Binaries (`npx playwright install`, in diesem Arbeitspaket bewusst nicht ausgeführt) sowie einen vorherigen `pnpm build` (der `webServer`-Block in `playwright.config.ts` startet die Produktions-App). **Nicht Teil der verpflichtenden Quality-Gate-Kommandos** (`install`/`lint`/`typecheck`/`test`/`build`).
+Benötigt einmalig installierte Browser-Binaries (`pnpm --filter @verevia/web exec playwright install chromium`). Seit Phase 3 (`apps/web/e2e/global-setup.ts`) außerdem eine laufende `apps/api`-Instanz und eine echte PostgreSQL-Verbindung: das Setup meldet einen echten Testnutzer über die reale better-auth-`/api/auth/sign-up/email`-Route an (kein Mock) und legt Person/Membership/RoleAssignment(TENANT_ADMIN) direkt per Prisma an, bevor der eigentliche Happy-Path-Test (`e2e/club-structure.spec.ts`) läuft. Erfordert `DATABASE_URL` (App-Rolle), `API_URL`, `APP_URL` und `PILOT_TENANT_SLUG` (siehe `.env.example`) sowie einen zuvor ausgeführten Seed. Der `webServer`-Block in `playwright.config.ts` startet bei Bedarf `pnpm start` (Produktions-Build vorausgesetzt). **Nicht Teil der verpflichtenden Quality-Gate-Kommandos** (`install`/`lint`/`typecheck`/`test`/`build`) — läuft wie die übrigen `*.integration-spec.ts`/RLS-Tests separat gegen eine echte Datenbank, siehe [PHASE_3_CLUB_STRUCTURE_REPORT.md](./PHASE_3_CLUB_STRUCTURE_REPORT.md).
 
 ### API-E2E-Test (Supertest)
 
