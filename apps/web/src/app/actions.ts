@@ -61,3 +61,43 @@ export async function updateTeamNameAction(teamId: string, formData: FormData) {
   });
   revalidatePath(`/mannschaften/${teamId}`);
 }
+
+export async function addTeamMemberAction(teamId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const personId = String(formData.get("personId") ?? "");
+  await apiFetch(`/api/v1/teams/${teamId}/members`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ personId }),
+  });
+  revalidatePath(`/mannschaften/${teamId}`);
+}
+
+export async function removeTeamMemberAction(teamId: string, personId: string) {
+  const tenantId = await requireTenantId();
+  await apiFetch(`/api/v1/teams/${teamId}/members/${personId}`, tenantId, {
+    method: "DELETE",
+  });
+  revalidatePath(`/mannschaften/${teamId}`);
+}
+
+export async function createPersonAction(formData: FormData) {
+  const tenantId = await requireTenantId();
+  const firstName = String(formData.get("firstName") ?? "");
+  const lastName = String(formData.get("lastName") ?? "");
+  await apiFetch("/api/v1/persons", tenantId, {
+    method: "POST",
+    body: JSON.stringify({ firstName, lastName }),
+  });
+  revalidatePath("/personen");
+}
+
+export async function updatePersonAction(personId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const firstName = String(formData.get("firstName") ?? "");
+  const lastName = String(formData.get("lastName") ?? "");
+  await apiFetch(`/api/v1/persons/${personId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({ firstName, lastName }),
+  });
+  revalidatePath("/personen");
+}

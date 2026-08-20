@@ -126,3 +126,69 @@ describe("AuthorizationService — Team", () => {
     ).toBe(false);
   });
 });
+
+describe("AuthorizationService — Person", () => {
+  it("TENANT_ADMIN can list persons", () => {
+    expect(authz.canListPersons(tenantAdmin())).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN can list persons", () => {
+    expect(authz.canListPersons(departmentAdmin(DEPT_FOOTBALL))).toBe(true);
+  });
+
+  it("COACH cannot list persons", () => {
+    expect(authz.canListPersons(coachOfTeam(TEAM_E1, DEPT_FOOTBALL))).toBe(false);
+  });
+
+  it("TENANT_ADMIN can create a person", () => {
+    expect(authz.canOnPerson(tenantAdmin(), "create")).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN cannot create a person", () => {
+    expect(authz.canOnPerson(departmentAdmin(DEPT_FOOTBALL), "create")).toBe(false);
+  });
+
+  it("DEPARTMENT_ADMIN cannot update a person", () => {
+    expect(authz.canOnPerson(departmentAdmin(DEPT_FOOTBALL), "update")).toBe(false);
+  });
+});
+
+describe("AuthorizationService — Team members", () => {
+  it("COACH E1 can read E1 members (via canOnTeam read)", () => {
+    expect(
+      authz.canOnTeam(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "read", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(true);
+  });
+
+  it("COACH E1 cannot read E2 members", () => {
+    expect(
+      authz.canOnTeam(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "read", {
+        teamId: TEAM_E2,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(false);
+  });
+
+  it("DEPARTMENT_ADMIN Fußball can assign/remove members of E1 (via canOnTeam update)", () => {
+    expect(
+      authz.canOnTeam(departmentAdmin(DEPT_FOOTBALL), "update", { departmentId: DEPT_FOOTBALL }),
+    ).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN Fußball cannot assign/remove members of a Tennis team", () => {
+    expect(
+      authz.canOnTeam(departmentAdmin(DEPT_FOOTBALL), "update", { departmentId: DEPT_TENNIS }),
+    ).toBe(false);
+  });
+
+  it("COACH cannot assign/remove members even of their own team", () => {
+    expect(
+      authz.canOnTeam(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "update", {
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(false);
+  });
+});

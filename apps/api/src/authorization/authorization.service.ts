@@ -110,4 +110,29 @@ export class AuthorizationService {
       (ra) => ra.scopeType === "TEAM" && ra.teamId === context.teamId,
     );
   }
+
+  /**
+   * A global person list/lookup is restricted to administrative roles
+   * (Phase 4, section 16 — "COACH darf nicht sämtliche Personen des
+   * Vereins abrufen"). DEPARTMENT_ADMIN is included: without it, they
+   * would have no way to find an existing Person to assign to a team in
+   * their own department (Person carries no department linkage of its
+   * own — the only association is via TeamMember/RoleAssignment). This
+   * means a DEPARTMENT_ADMIN can see persons unrelated to their own
+   * department too; documented as a known, deliberate simplification
+   * (see PHASE_4_TEAM_MEMBERSHIP_REPORT.md) rather than building
+   * per-department Person filtering this early.
+   */
+  canListPersons(roleAssignments: AuthorizationRoleAssignment[]): boolean {
+    if (this.isTenantAdmin(roleAssignments)) return true;
+    return roleAssignments.some(
+      (ra) => ra.scopeType === "DEPARTMENT" && ra.role === "DEPARTMENT_ADMIN",
+    );
+  }
+
+  /** Creating/editing a Person's own record is TENANT_ADMIN-only (section 15); reading follows canListPersons. */
+  canOnPerson(roleAssignments: AuthorizationRoleAssignment[], action: Action): boolean {
+    if (action === "read") return this.canListPersons(roleAssignments);
+    return this.isTenantAdmin(roleAssignments);
+  }
 }

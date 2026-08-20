@@ -26,6 +26,10 @@ let tenantAId: string;
 let tenantBId: string;
 let personAId: string;
 let personBId: string;
+let teamAId: string;
+let teamBId: string;
+let teamMemberAId: string;
+let teamMemberBId: string;
 
 beforeAll(async () => {
   const tenantA = await adminPrisma.tenant.create({
@@ -45,9 +49,41 @@ beforeAll(async () => {
   });
   personAId = personA.id;
   personBId = personB.id;
+
+  const departmentA = await adminPrisma.department.create({
+    data: { tenantId: tenantAId, name: "Department A" },
+  });
+  const departmentB = await adminPrisma.department.create({
+    data: { tenantId: tenantBId, name: "Department B" },
+  });
+
+  const teamA = await adminPrisma.team.create({
+    data: { tenantId: tenantAId, departmentId: departmentA.id, name: "Team A" },
+  });
+  const teamB = await adminPrisma.team.create({
+    data: { tenantId: tenantBId, departmentId: departmentB.id, name: "Team B" },
+  });
+  teamAId = teamA.id;
+  teamBId = teamB.id;
+
+  const teamMemberA = await adminPrisma.teamMember.create({
+    data: { tenantId: tenantAId, personId: personAId, teamId: teamAId },
+  });
+  const teamMemberB = await adminPrisma.teamMember.create({
+    data: { tenantId: tenantBId, personId: personBId, teamId: teamBId },
+  });
+  teamMemberAId = teamMemberA.id;
+  teamMemberBId = teamMemberB.id;
 });
 
 afterAll(async () => {
+  await adminPrisma.teamMember.deleteMany({
+    where: { tenantId: { in: [tenantAId, tenantBId] } },
+  });
+  await adminPrisma.team.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } });
+  await adminPrisma.department.deleteMany({
+    where: { tenantId: { in: [tenantAId, tenantBId] } },
+  });
   await adminPrisma.person.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } });
   await adminPrisma.tenant.deleteMany({ where: { id: { in: [tenantAId, tenantBId] } } });
   await adminPrisma.$disconnect();
@@ -152,7 +188,6 @@ describe("RoleAssignment scope CHECK constraint", () => {
   });
 
   it("rejects TENANT scope with a departmentId set", async () => {
-    const db = getTenantPrisma(tenantAId);
     await expect(
       adminPrisma.$executeRaw`
         INSERT INTO "role_assignment" (id, "tenantId", "personId", role, "scopeType", "departmentId", "createdAt")
@@ -174,5 +209,46 @@ describe("RoleAssignment scope CHECK constraint", () => {
     expect(assignment.scopeType).toBe("TENANT");
 
     await adminPrisma.roleAssignment.delete({ where: { id: assignment.id } });
+  });
+});
+
+describe("PostgreSQL RLS — tenant isolation (TeamMember)", () => {
+  it("Tenant A sees its own TeamMember", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const member = await db.teamMember.findUnique({ where: { id: teamMemberAId } });
+    expect(member).not.toBeNull();
+    expect(member?.id).toBe(teamMemberAId);
+  });
+
+  it("Tenant A does NOT see Tenant B's TeamMember", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const member = await db.teamMember.findUnique({ where: { id: teamMemberBId } });
+    expect(member).toBeNull();
+  });
+
+  it("a connection with no app.tenant_id set sees NO TeamMember rows", async () => {
+    const members = await rawPrisma.teamMember.findMany({
+      where: { id: { in: [teamMemberAId, teamMemberBId] } },
+    });
+    expect(members).toHaveLength(0);
+  });
+
+  it("findMany() scoped to Tenant A returns exactly Tenant A's TeamMember rows", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const members = await db.teamMember.findMany({
+      where: { id: { in: [teamMemberAId, teamMemberBId] } },
+    });
+    expect(members.map((m) => m.id)).toEqual([teamMemberAId]);
+  });
+
+  it("Tenant B cannot update Tenant A's TeamMember", async () => {
+    const db = getTenantPrisma(tenantBId);
+    await expect(
+      db.teamMember.update({ where: { id: teamMemberAId }, data: { status: "INACTIVE" } }),
+    ).rejects.toThrow();
+
+    const dbA = getTenantPrisma(tenantAId);
+    const stillActive = await dbA.teamMember.findUnique({ where: { id: teamMemberAId } });
+    expect(stillActive?.status).toBe("ACTIVE");
   });
 });
