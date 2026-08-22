@@ -1,5 +1,7 @@
-# Permanent Verevia DEV deployment on the Hostinger VPS (Phase 7), see
-# docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md.
+# Permanent Verevia DEV deployment on the Hostinger VPS. Originally Phase
+# 7 (build locally on the VPS), converted in Phase 8 to pull pre-built
+# images from GHCR instead — see docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md and
+# docs/PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md.
 #
 # NOT the same file as docker-compose.yml in this same directory — that
 # one is a small Postgres-only aid for local `pnpm dev` on a contributor's
@@ -7,11 +9,20 @@
 # the VPS under /srv/verevia/dev.
 #
 # Deployment layout on the VPS: /srv/verevia/dev IS a real git checkout of
-# this repository (needed so `context: ../..` below resolves to the repo
-# root) — this file lives there at its normal repo path,
+# this repository — this file lives there at its normal repo path,
 # infrastructure/docker/docker-compose.dev-deploy.yml, and the real
 # secrets file sits right next to it at infrastructure/docker/.env
 # (gitignored, never committed — see .env.dev.example for the template).
+# Images are no longer built here (see api.Dockerfile/web.Dockerfile for
+# how they ARE built, by .github/workflows/deploy-dev.yml); this file only
+# pulls and runs them.
+#
+# DEPLOY_TAG selects which published image tag to run (a git short SHA,
+# see .github/workflows/deploy-dev.yml) — set in infrastructure/docker/.env
+# by infrastructure/scripts/deploy-dev.sh before each deploy; defaults to
+# the floating `dev` tag (== latest successful main build) if unset, which
+# is only really meaningful for a manual `docker compose up` outside the
+# deploy script.
 #
 # Networks (all pre-existing on the VPS, created outside this repo — see
 # docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md section "Inventar"):
@@ -21,8 +32,9 @@
 #   verevia-proxy — the network Traefik watches; only web/api attach to it,
 #                   Postgres never does.
 #
-# Run every command below from infrastructure/docker/ inside the checkout:
-#   docker compose -f docker-compose.dev-deploy.yml build
+# Run every command below from infrastructure/docker/ inside the checkout
+# (deploy-dev.sh does exactly this):
+#   docker compose -f docker-compose.dev-deploy.yml pull
 #   docker compose -f docker-compose.dev-deploy.yml run --rm migrate
 #   docker compose -f docker-compose.dev-deploy.yml up -d postgres api web
 
@@ -39,8 +51,7 @@ services:
     # Deliberately NO `ports:` — reachable exclusively via the internal
     # verevia-dev Docker network. Never bind this to the host, not even
     # 127.0.0.1, so a future compose edit can't accidentally make it
-    # internet-facing (see docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md,
-    # Sicherheit).
+    # internet-facing.
     volumes:
       - verevia-dev-postgres-data:/var/lib/postgresql/data
     networks:
@@ -51,12 +62,13 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-off migration/seed job — reuses the SAME published api image (not
+  # a separate "builder"/"migrate" image): `prisma` and `tsx` are regular
+  # (not dev) dependencies of @verevia/database specifically so this
+  # works, see api.Dockerfile's top comment. `restart: "no"` + always run
+  # via `docker compose run --rm migrate`, never part of `up -d`.
   migrate:
-    build:
-      context: ../..
-      dockerfile: infrastructure/docker/api.Dockerfile
-      target: builder
-    image: verevia-dev-api:migrate
+    image: ghcr.io/mugglman/verevia-api:${DEPLOY_TAG:-dev}
     container_name: verevia-dev-migrate
     restart: "no"
     env_file: .env
@@ -76,11 +88,7 @@ services:
         pnpm --filter @verevia/database exec tsx prisma/seed.ts
 
   api:
-    build:
-      context: ../..
-      dockerfile: infrastructure/docker/api.Dockerfile
-      target: runner
-    image: verevia-dev-api:latest
+    image: ghcr.io/mugglman/verevia-api:${DEPLOY_TAG:-dev}
     container_name: verevia-dev-api
     restart: unless-stopped
     env_file: .env
@@ -90,6 +98,9 @@ services:
       PORT: 3001
       APP_URL: https://app.verevia.app
       BETTER_AUTH_URL: https://api.verevia.app
+      # Surfaced on GET /health (Phase 8, section 20) — purely
+      # informational, not a secret.
+      APP_VERSION: ${DEPLOY_TAG:-dev}
     networks:
       - verevia-dev
       - verevia-proxy
@@ -111,34 +122,23 @@ services:
       - traefik.http.services.verevia-dev-api.loadbalancer.server.port=3001
 
   web:
-    build:
-      context: ../..
-      dockerfile: infrastructure/docker/web.Dockerfile
-      target: runner
-      # NEXT_PUBLIC_API_URL is inlined into the client bundle at build
-      # time (see web.Dockerfile) — it MUST be a build arg, not just the
-      # `environment:` entry below (which only affects the running
-      # container, too late for anything already baked into the JS sent
-      # to the browser).
-      args:
-        NEXT_PUBLIC_API_URL: https://api.verevia.app
-    image: verevia-dev-web:latest
+    image: ghcr.io/mugglman/verevia-web:${DEPLOY_TAG:-dev}
     container_name: verevia-dev-web
     restart: unless-stopped
     env_file: .env
     environment:
       DATABASE_URL: ${WEB_DATABASE_URL}
-      # Deliberately NOT overriding NODE_ENV here — this container ran a
-      # real `next build` and runs `next start`, both genuinely
-      # production-mode Next.js operations (see web.Dockerfile's own
-      # `ENV NODE_ENV=production`); forcing NODE_ENV=development on top
-      # of that is what Next.js itself warns against ("non-standard
-      # NODE_ENV value"). This is still a DEV *deployment* (fictional
-      # data, not customer-facing) — that's a property of which database/
-      # domain it points at, not of the Next.js runtime mode. Contrast
-      # with the api service below, which deliberately DOES set
-      # NODE_ENV=development for its own, unrelated reason (the Phase 6
-      # dev-only invitation-token response field).
+      # Deliberately NOT overriding NODE_ENV here — this image ran a real
+      # `next build` and runs `next start`, both genuinely production-mode
+      # Next.js operations (see web.Dockerfile's own
+      # `ENV NODE_ENV=production`); forcing NODE_ENV=development on top of
+      # that is what Next.js itself warns against ("non-standard NODE_ENV
+      # value"). This is still a DEV *deployment* (fictional data, not
+      # customer-facing) — that's a property of which database/domain it
+      # points at, not of the Next.js runtime mode. Contrast with the api
+      # service above, which deliberately DOES set NODE_ENV=development
+      # for its own, unrelated reason (the Phase 6 dev-only
+      # invitation-token response field).
       PORT: 3000
       APP_URL: https://app.verevia.app
       API_URL: https://api.verevia.app

@@ -10,6 +10,14 @@ import { prisma } from "@verevia/database";
 
 interface HealthResponse {
   status: "ok";
+  /**
+   * The deployed image tag (git short SHA), purely informational — no
+   * secrets, no internal paths (Phase 8, section 20). Only present when
+   * APP_VERSION is actually set (the real DEV/production deployment sets
+   * it via docker-compose; absent in local dev and in unit tests, so the
+   * shape here stays exactly `{ status: "ok" }` in those cases).
+   */
+  version?: string;
 }
 
 interface ReadinessResponse {
@@ -24,7 +32,8 @@ interface ReadinessResponse {
 export class HealthController {
   @Get()
   check(): HealthResponse {
-    return { status: "ok" };
+    const version = process.env.APP_VERSION;
+    return version ? { status: "ok", version } : { status: "ok" };
   }
 
   /**

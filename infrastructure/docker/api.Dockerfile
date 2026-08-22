@@ -1,4 +1,5 @@
-# Multi-stage build for @verevia/api (NestJS), per docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md.
+# Multi-stage build for @verevia/api (NestJS), per
+# docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md / docs/PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md.
 #
 # Build context is the REPO ROOT (not this directory) — this Dockerfile
 # uses `turbo prune` to extract only the dependency closure of @verevia/api
@@ -7,24 +8,32 @@
 #
 #   docker build -f infrastructure/docker/api.Dockerfile -t verevia-dev-api .
 #
+# Published to ghcr.io/mugglman/verevia-api by .github/workflows/deploy-dev.yml
+# (Phase 8) — this same image is used both as the persistent api container
+# AND, with an overridden command, as the one-off migrate job in
+# docker-compose.dev-deploy.yml (`prisma migrate deploy` + seed). That only
+# works because `prisma` and `tsx` are regular (not dev) dependencies of
+# @verevia/database (see its package.json) — deliberate: a single published
+# image beats maintaining a second "fat" migrate-only image just to carry
+# two CLI tools, and the size cost is small relative to Node/Nest itself.
+#
 # Four stages:
 #   1. pruner    — computes the minimal pnpm-workspace subset for @verevia/api
 #   2. builder   — full install (incl. devDependencies) of that subset, runs
 #                  the real `turbo run build` (tsc/nest build + prisma generate)
 #   3. prod-deps — a SEPARATE, production-only install of the same subset
-#                  (no devDependencies in the final image), then re-runs
-#                  `prisma generate` against that fresh node_modules (the
-#                  generated Prisma Client lives inside node_modules and is
-#                  NOT carried over between separate `pnpm install` runs)
-#   4. runner    — copies only the built dist/ output + prod node_modules
-#                  into a minimal, non-root final image
-#
-# The `builder` stage is also used directly (via --target builder) as the
-# one-off migration/seed image in docker-compose.dev-deploy.yml, since it
-# already has the Prisma CLI and `tsx` (both devDependencies) available —
-# a persistent runtime container should not carry migration tooling, but a
-# short-lived `docker compose run` invocation reasonably can.
-
+#                  (no devDependencies in the final image — prisma/tsx ARE
+#                  included, see above), then re-runs `prisma generate`
+#                  against that fresh node_modules (the generated Prisma
+#                  Client lives inside node_modules and is NOT carried over
+#                  between separate `pnpm install` runs), after copying in
+#                  packages/database/prisma/ (schema + migrations + seed.ts
+#                  — needed both for `prisma generate` here AND, later, for
+#                  the runner image to actually run migrate/seed)
+#   4. runner    — copies the prod-deps tree (node_modules + the already-
+#                  present packages/database/prisma/) wholesale, then
+#                  overlays the actual built dist/ output on top; non-root,
+#                  minimal beyond that
 FROM node:22-alpine AS base
 RUN corepack enable
 
