@@ -131,3 +131,40 @@ export async function revokeRoleAction(personId: string, roleAssignmentId: strin
   });
   revalidatePath("/personen");
 }
+
+export async function inviteAccountAction(personId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const email = String(formData.get("email") ?? "");
+  await apiFetch(`/api/v1/persons/${personId}/invitations`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  revalidatePath("/personen");
+}
+
+export async function revokeInvitationAction(personId: string, invitationId: string) {
+  const tenantId = await requireTenantId();
+  await apiFetch(`/api/v1/persons/${personId}/invitations/${invitationId}`, tenantId, {
+    method: "DELETE",
+  });
+  revalidatePath("/personen");
+}
+
+export async function createRelationshipAction(personId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const toPersonId = String(formData.get("toPersonId") ?? "");
+  const type = String(formData.get("type") ?? "");
+  await apiFetch(`/api/v1/persons/${personId}/relationships`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ toPersonId, type }),
+  });
+  revalidatePath("/personen");
+}
+
+export async function revokeRelationshipAction(personId: string, relationshipId: string) {
+  const tenantId = await requireTenantId();
+  await apiFetch(`/api/v1/persons/${personId}/relationships/${relationshipId}`, tenantId, {
+    method: "DELETE",
+  });
+  revalidatePath("/personen");
+}

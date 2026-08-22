@@ -3,6 +3,8 @@
 > Status: Entwurf zur Freigabe. Baut auf [ARCHITEKTUR_BERICHT.md](./ARCHITEKTUR_BERICHT.md) auf und ersetzt dessen bisherige Auth-Empfehlung ("Auth selbst in NestJS bauen") durch eine präzisere Entscheidung.
 >
 > Erstellt: 2026-08-17. Kein Anwendungscode, kein Prisma-Schema, keine Dependencies im Rahmen dieser Analyse.
+>
+> **Ergänzt am 2026-08-21 (Phase 6):** Die hier vorgeschlagenen Konzepte — `PersonRelationship` (Abschnitt 6), die Kombination aus SELF-/RELATIONSHIP-/RBAC-Zugriffspfaden (Abschnitt 9) und Account-Einladungen — sind jetzt implementiert, siehe [PHASE_6_GUARDIAN_INVITATIONS_REPORT.md](./PHASE_6_GUARDIAN_INVITATIONS_REPORT.md). Dieses Dokument bleibt als fachlicher Hintergrund/Begründung gültig; der aktuelle Implementierungsstand (Endpunkte, konkrete Einschränkungen, offene Datenschutz-TODOs) steht im Phase-6-Bericht.
 
 ## 1. Executive Summary
 

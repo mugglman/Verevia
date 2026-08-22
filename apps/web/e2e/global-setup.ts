@@ -119,6 +119,20 @@ export default async function globalSetup(): Promise<void> {
     await db.roleAssignment.deleteMany({
       where: { tenantId: tenant.id, personId: { in: staleIds } },
     });
+    // Phase 6: a stale Person may still be referenced by a PersonRelationship
+    // (either direction) or an AccountInvitation from a previous run of
+    // e2e/guardian-invitation.spec.ts — both must go before the Person
+    // itself, same FK-respecting order as guardian-invitations.integration-
+    // spec.ts's own afterAll cleanup.
+    await db.personRelationship.deleteMany({
+      where: {
+        tenantId: tenant.id,
+        OR: [{ fromPersonId: { in: staleIds } }, { toPersonId: { in: staleIds } }],
+      },
+    });
+    await prisma.accountInvitation.deleteMany({
+      where: { tenantId: tenant.id, personId: { in: staleIds } },
+    });
     await prisma.membership.deleteMany({ where: { personId: { in: staleIds } } });
     await db.person.deleteMany({ where: { tenantId: tenant.id, id: { in: staleIds } } });
     if (staleUserIds.length > 0) {

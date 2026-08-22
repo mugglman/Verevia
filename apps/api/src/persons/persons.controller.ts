@@ -19,6 +19,11 @@ export class PersonsController {
     return this.personsService.getById(id);
   }
 
+  @Get(":id/teams")
+  getTeams(@Param("id", ParseUUIDPipe) id: string) {
+    return this.personsService.getTeams(id);
+  }
+
   @Post()
   create(@Body() dto: CreatePersonDto) {
     return this.personsService.create(dto);
