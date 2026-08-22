@@ -1,0 +1,166 @@
+# Permanent Verevia DEV deployment on the Hostinger VPS (Phase 7), see
+# docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md.
+#
+# NOT the same file as docker-compose.yml in this same directory — that
+# one is a small Postgres-only aid for local `pnpm dev` on a contributor's
+# own machine. This file is the actual, persistent DEV stack that runs on
+# the VPS under /srv/verevia/dev.
+#
+# Deployment layout on the VPS: /srv/verevia/dev IS a real git checkout of
+# this repository (needed so `context: ../..` below resolves to the repo
+# root) — this file lives there at its normal repo path,
+# infrastructure/docker/docker-compose.dev-deploy.yml, and the real
+# secrets file sits right next to it at infrastructure/docker/.env
+# (gitignored, never committed — see .env.dev.example for the template).
+#
+# Networks (all pre-existing on the VPS, created outside this repo — see
+# docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md section "Inventar"):
+#   verevia-dev   — internal-only backend network for this stack (Postgres
+#                   lives here ONLY, never on verevia-proxy, never a
+#                   published host port: no 0.0.0.0:5432 anywhere).
+#   verevia-proxy — the network Traefik watches; only web/api attach to it,
+#                   Postgres never does.
+#
+# Run every command below from infrastructure/docker/ inside the checkout:
+#   docker compose -f docker-compose.dev-deploy.yml build
+#   docker compose -f docker-compose.dev-deploy.yml run --rm migrate
+#   docker compose -f docker-compose.dev-deploy.yml up -d postgres api web
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: verevia-dev-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: verevia
+    # Deliberately NO `ports:` — reachable exclusively via the internal
+    # verevia-dev Docker network. Never bind this to the host, not even
+    # 127.0.0.1, so a future compose edit can't accidentally make it
+    # internet-facing (see docs/PHASE_7_DEV_DEPLOYMENT_REPORT.md,
+    # Sicherheit).
+    volumes:
+      - verevia-dev-postgres-data:/var/lib/postgresql/data
+    networks:
+      - verevia-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER} -d verevia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/api.Dockerfile
+      target: builder
+    image: verevia-dev-api:migrate
+    container_name: verevia-dev-migrate
+    restart: "no"
+    env_file: .env
+    environment:
+      DATABASE_URL: ${MIGRATE_DATABASE_URL}
+    networks:
+      - verevia-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /app
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        pnpm --filter @verevia/database exec prisma migrate deploy &&
+        pnpm --filter @verevia/database exec prisma migrate status &&
+        pnpm --filter @verevia/database exec tsx prisma/seed.ts
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/api.Dockerfile
+      target: runner
+    image: verevia-dev-api:latest
+    container_name: verevia-dev-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${API_DATABASE_URL}
+      NODE_ENV: development
+      PORT: 3001
+      APP_URL: https://app.verevia.app
+      BETTER_AUTH_URL: https://api.verevia.app
+    networks:
+      - verevia-dev
+      - verevia-proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=verevia-proxy
+      - traefik.http.routers.verevia-dev-api.rule=Host(`api.verevia.app`)
+      - traefik.http.routers.verevia-dev-api.entrypoints=websecure
+      - traefik.http.routers.verevia-dev-api.tls.certresolver=letsencrypt
+      - traefik.http.services.verevia-dev-api.loadbalancer.server.port=3001
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/web.Dockerfile
+      target: runner
+      # NEXT_PUBLIC_API_URL is inlined into the client bundle at build
+      # time (see web.Dockerfile) — it MUST be a build arg, not just the
+      # `environment:` entry below (which only affects the running
+      # container, too late for anything already baked into the JS sent
+      # to the browser).
+      args:
+        NEXT_PUBLIC_API_URL: https://api.verevia.app
+    image: verevia-dev-web:latest
+    container_name: verevia-dev-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${WEB_DATABASE_URL}
+      NODE_ENV: development
+      PORT: 3000
+      APP_URL: https://app.verevia.app
+      API_URL: https://api.verevia.app
+      NEXT_PUBLIC_API_URL: https://api.verevia.app
+      BETTER_AUTH_URL: https://api.verevia.app
+    networks:
+      - verevia-dev
+      - verevia-proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/login',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=verevia-proxy
+      - traefik.http.routers.verevia-dev-web.rule=Host(`app.verevia.app`)
+      - traefik.http.routers.verevia-dev-web.entrypoints=websecure
+      - traefik.http.routers.verevia-dev-web.tls.certresolver=letsencrypt
+      - traefik.http.services.verevia-dev-web.loadbalancer.server.port=3000
+
+networks:
+  verevia-dev:
+    external: true
+  verevia-proxy:
+    external: true
+
+volumes:
+  verevia-dev-postgres-data:
