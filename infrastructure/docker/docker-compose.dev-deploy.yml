@@ -128,7 +128,17 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: ${WEB_DATABASE_URL}
-      NODE_ENV: development
+      # Deliberately NOT overriding NODE_ENV here — this container ran a
+      # real `next build` and runs `next start`, both genuinely
+      # production-mode Next.js operations (see web.Dockerfile's own
+      # `ENV NODE_ENV=production`); forcing NODE_ENV=development on top
+      # of that is what Next.js itself warns against ("non-standard
+      # NODE_ENV value"). This is still a DEV *deployment* (fictional
+      # data, not customer-facing) — that's a property of which database/
+      # domain it points at, not of the Next.js runtime mode. Contrast
+      # with the api service below, which deliberately DOES set
+      # NODE_ENV=development for its own, unrelated reason (the Phase 6
+      # dev-only invitation-token response field).
       PORT: 3000
       APP_URL: https://app.verevia.app
       API_URL: https://api.verevia.app
