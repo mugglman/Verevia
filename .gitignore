@@ -70,9 +70,6 @@ dist/
 # Turborepo
 .turbo/
 
-# Docker
-.dockerignore
-
 # SSL certificates
 *.pem
 *.key

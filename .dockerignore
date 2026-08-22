@@ -1,0 +1,38 @@
+# Keeps the Docker build context small and avoids leaking local secrets
+# into an image layer. Mirrors .gitignore where relevant; see
+# infrastructure/docker/README.md for how the images are actually built
+# (turbo prune, so most of this only matters for build-context upload
+# speed, not correctness).
+
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+dist/
+**/dist/
+.turbo/
+**/.turbo/
+coverage/
+**/coverage/
+test-results/
+playwright-report/
+blob-report/
+apps/web/e2e/.auth/
+
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+*.pem
+*.key
+*.crt
+
+.git/
+.github/
+.vscode/
+.idea/
+*.log
+*.tsbuildinfo
+.DS_Store
