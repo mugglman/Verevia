@@ -6,9 +6,16 @@ import {
 } from "@nestjs/common";
 import { getTenantContext, getTenantPrisma } from "@verevia/database";
 import { AuthorizationService } from "../authorization/authorization.service";
+import { PersonRelationshipsAuthService } from "../authorization/person-relationships-auth.service";
 import { PersonRoleAssignmentsService } from "../authorization/person-role-assignments.service";
 import { CreatePersonDto } from "./dto/create-person.dto";
 import { UpdatePersonDto } from "./dto/update-person.dto";
+
+export interface PersonTeamDto {
+  id: string;
+  name: string;
+  departmentId: string;
+}
 
 export interface PersonDto {
   id: string;
@@ -30,6 +37,7 @@ export class PersonsService {
   constructor(
     private readonly authz: AuthorizationService,
     private readonly roleAssignments: PersonRoleAssignmentsService,
+    private readonly relationshipsAuth: PersonRelationshipsAuthService,
   ) {}
 
   private requireContext() {
@@ -95,15 +103,64 @@ export class PersonsService {
   async getById(id: string): Promise<PersonDto> {
     const context = this.requireContext();
     const assignments = await this.roleAssignments.load(context.tenantId, context.personId!);
-    if (!this.authz.canListPersons(assignments)) {
+
+    // RBAC (admin tiers) OR ReBAC (SELF / verified guardian) — the three
+    // coexisting access paths from Phase 6, section 19. RBAC is checked
+    // first since it never needs the relationships lookup.
+    let canRead = this.authz.canListPersons(assignments);
+    if (!canRead) {
+      const relationships = await this.relationshipsAuth.loadAsGuardian(
+        context.tenantId,
+        context.personId!,
+      );
+      canRead = this.authz.canAccessPersonAsSelfOrGuardian(context.personId!, id, relationships);
+    }
+    if (!canRead) {
       throw new ForbiddenException("Not permitted to read this person");
     }
+
     const db = getTenantPrisma(context.tenantId);
     const person = await db.person.findUnique({ where: { id } });
     if (!person) {
       throw new NotFoundException("Person not found");
     }
     return this.toDto(person, this.authz.canOnPerson(assignments, "update"));
+  }
+
+  /**
+   * Which teams a Person belongs to (Phase 6, section 17: "GET
+   * Teamzugehörigkeit des Kindes") — same RBAC-or-ReBAC access rule as
+   * `getById`. Deliberately a separate, minimal endpoint rather than
+   * embedding team data in `PersonDto` — most callers (the admin person
+   * list) don't need it, and computing it always would be wasted work.
+   */
+  async getTeams(id: string): Promise<PersonTeamDto[]> {
+    const context = this.requireContext();
+    const assignments = await this.roleAssignments.load(context.tenantId, context.personId!);
+
+    let canRead = this.authz.canListPersons(assignments);
+    if (!canRead) {
+      const relationships = await this.relationshipsAuth.loadAsGuardian(
+        context.tenantId,
+        context.personId!,
+      );
+      canRead = this.authz.canAccessPersonAsSelfOrGuardian(context.personId!, id, relationships);
+    }
+    if (!canRead) {
+      throw new ForbiddenException("Not permitted to read this person's teams");
+    }
+
+    const db = getTenantPrisma(context.tenantId);
+    const person = await db.person.findUnique({ where: { id } });
+    if (!person) {
+      throw new NotFoundException("Person not found");
+    }
+
+    const memberships = await db.teamMember.findMany({
+      where: { personId: id, status: "ACTIVE" },
+      include: { team: { select: { id: true, name: true, departmentId: true } } },
+    });
+    return memberships.map((m) => m.team);
   }
 
   async create(dto: CreatePersonDto): Promise<PersonDto> {

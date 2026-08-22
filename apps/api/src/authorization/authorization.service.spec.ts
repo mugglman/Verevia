@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AuthorizationRoleAssignment, AuthorizationService } from "./authorization.service";
+import {
+  AuthorizationRelationship,
+  AuthorizationRoleAssignment,
+  AuthorizationService,
+} from "./authorization.service";
 
 const authz = new AuthorizationService();
 
@@ -231,5 +235,110 @@ describe("AuthorizationService — getManagedDepartmentIds", () => {
 
   it("COACH has no managed departments", () => {
     expect(authz.getManagedDepartmentIds(coachOfTeam(TEAM_E1, DEPT_FOOTBALL))).toEqual([]);
+  });
+});
+
+const PERSON_CHILD = "person-child";
+const PERSON_OTHER_CHILD = "person-other-child";
+
+function verifiedGuardian(toPersonId: string, type: "PARENT" | "LEGAL_GUARDIAN" = "LEGAL_GUARDIAN"): AuthorizationRelationship[] {
+  return [{ type, status: "VERIFIED", toPersonId }];
+}
+
+describe("AuthorizationService — Invitations/Relationships management", () => {
+  it("TENANT_ADMIN can manage invitations", () => {
+    expect(authz.canManageInvitations(tenantAdmin())).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN cannot manage invitations", () => {
+    expect(authz.canManageInvitations(departmentAdmin(DEPT_FOOTBALL))).toBe(false);
+  });
+
+  it("COACH cannot manage invitations", () => {
+    expect(authz.canManageInvitations(coachOfTeam(TEAM_E1, DEPT_FOOTBALL))).toBe(false);
+  });
+
+  it("TENANT_ADMIN can manage relationships", () => {
+    expect(authz.canManageRelationships(tenantAdmin())).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN cannot manage relationships", () => {
+    expect(authz.canManageRelationships(departmentAdmin(DEPT_FOOTBALL))).toBe(false);
+  });
+});
+
+describe("AuthorizationService — getGuardianChildPersonIds", () => {
+  it("includes a VERIFIED LEGAL_GUARDIAN relationship's child", () => {
+    expect(authz.getGuardianChildPersonIds(verifiedGuardian(PERSON_CHILD))).toEqual([
+      PERSON_CHILD,
+    ]);
+  });
+
+  it("includes a VERIFIED PARENT relationship's child", () => {
+    expect(authz.getGuardianChildPersonIds(verifiedGuardian(PERSON_CHILD, "PARENT"))).toEqual([
+      PERSON_CHILD,
+    ]);
+  });
+
+  it("excludes a PENDING (unverified) relationship", () => {
+    const relationships: AuthorizationRelationship[] = [
+      { type: "LEGAL_GUARDIAN", status: "PENDING", toPersonId: PERSON_CHILD },
+    ];
+    expect(authz.getGuardianChildPersonIds(relationships)).toEqual([]);
+  });
+
+  it("excludes an EMERGENCY_CONTACT relationship even if VERIFIED", () => {
+    const relationships: AuthorizationRelationship[] = [
+      { type: "EMERGENCY_CONTACT", status: "VERIFIED", toPersonId: PERSON_CHILD },
+    ];
+    expect(authz.getGuardianChildPersonIds(relationships)).toEqual([]);
+  });
+
+  it("excludes a REVOKED relationship", () => {
+    const relationships: AuthorizationRelationship[] = [
+      { type: "LEGAL_GUARDIAN", status: "REVOKED", toPersonId: PERSON_CHILD },
+    ];
+    expect(authz.getGuardianChildPersonIds(relationships)).toEqual([]);
+  });
+});
+
+describe("AuthorizationService — canAccessPersonAsSelfOrGuardian", () => {
+  it("a User can access their own linked Person (SELF)", () => {
+    expect(authz.canAccessPersonAsSelfOrGuardian(PERSON_CHILD, PERSON_CHILD, [])).toBe(true);
+  });
+
+  it("a verified guardian can access their own child (RELATIONSHIP)", () => {
+    expect(
+      authz.canAccessPersonAsSelfOrGuardian(
+        "person-guardian",
+        PERSON_CHILD,
+        verifiedGuardian(PERSON_CHILD),
+      ),
+    ).toBe(true);
+  });
+
+  it("a verified guardian cannot access a different child", () => {
+    expect(
+      authz.canAccessPersonAsSelfOrGuardian(
+        "person-guardian",
+        PERSON_OTHER_CHILD,
+        verifiedGuardian(PERSON_CHILD),
+      ),
+    ).toBe(false);
+  });
+
+  it("an emergency contact has no automatic access", () => {
+    const relationships: AuthorizationRelationship[] = [
+      { type: "EMERGENCY_CONTACT", status: "VERIFIED", toPersonId: PERSON_CHILD },
+    ];
+    expect(
+      authz.canAccessPersonAsSelfOrGuardian("person-contact", PERSON_CHILD, relationships),
+    ).toBe(false);
+  });
+
+  it("an unrelated person has no access", () => {
+    expect(authz.canAccessPersonAsSelfOrGuardian("person-stranger", PERSON_CHILD, [])).toBe(
+      false,
+    );
   });
 });

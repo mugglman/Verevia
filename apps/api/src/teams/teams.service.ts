@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { getTenantContext, getTenantPrisma } from "@verevia/database";
 import { AuthorizationService } from "../authorization/authorization.service";
+import { PersonRelationshipsAuthService } from "../authorization/person-relationships-auth.service";
 import { PersonRoleAssignmentsService } from "../authorization/person-role-assignments.service";
 import { CreateTeamDto } from "./dto/create-team.dto";
 import { ListTeamsQueryDto } from "./dto/list-teams-query.dto";
@@ -23,6 +24,7 @@ export class TeamsService {
   constructor(
     private readonly authz: AuthorizationService,
     private readonly roleAssignments: PersonRoleAssignmentsService,
+    private readonly relationshipsAuth: PersonRelationshipsAuthService,
   ) {}
 
   private requireContext() {
@@ -64,9 +66,28 @@ export class TeamsService {
       throw new NotFoundException("Team not found");
     }
     const assignments = await this.roleAssignments.load(context.tenantId, context.personId!);
-    if (
-      !this.authz.canOnTeam(assignments, "read", { teamId: team.id, departmentId: team.departmentId })
-    ) {
+    let canRead = this.authz.canOnTeam(assignments, "read", {
+      teamId: team.id,
+      departmentId: team.departmentId,
+    });
+    if (!canRead) {
+      // ReBAC fallback (Phase 6, section 17: "GET Team des Kindes") — a
+      // verified guardian may read a team that at least one of their
+      // children is an active member of.
+      const relationships = await this.relationshipsAuth.loadAsGuardian(
+        context.tenantId,
+        context.personId!,
+      );
+      const childIds = this.authz.getGuardianChildPersonIds(relationships);
+      if (childIds.length > 0) {
+        const db2 = getTenantPrisma(context.tenantId);
+        const guardianMembership = await db2.teamMember.findFirst({
+          where: { teamId: team.id, personId: { in: childIds }, status: "ACTIVE" },
+        });
+        canRead = guardianMembership !== null;
+      }
+    }
+    if (!canRead) {
       throw new ForbiddenException("Not permitted to read this team");
     }
     return {

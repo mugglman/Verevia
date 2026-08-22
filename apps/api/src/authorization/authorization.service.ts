@@ -17,6 +17,18 @@ export interface AuthorizationRoleAssignment {
 }
 
 /**
+ * The subset of a PersonRelationship's fields needed for ReBAC decisions
+ * (Phase 6) — always from the perspective of the relationship's
+ * `fromPerson` (the potential guardian); `toPersonId` is the (potential)
+ * child.
+ */
+export interface AuthorizationRelationship {
+  type: "PARENT" | "LEGAL_GUARDIAN" | "EMERGENCY_CONTACT";
+  status: "PENDING" | "VERIFIED" | "REVOKED";
+  toPersonId: string;
+}
+
+/**
  * First real authorization layer, per the Phase 3 work order, section 16/17.
  * Deliberately a small, hand-written service rather than a CASL setup: the
  * current permission surface is 3 resources × 3 actions, and a
@@ -160,5 +172,53 @@ export class AuthorizationService {
       .filter((ra) => ra.scopeType === "DEPARTMENT" && ra.role === "DEPARTMENT_ADMIN")
       .map((ra) => ra.departmentId)
       .filter((id): id is string => id !== null);
+  }
+
+  /** Sending/revoking account invitations is TENANT_ADMIN-only (Phase 6, section 8). */
+  canManageInvitations(roleAssignments: AuthorizationRoleAssignment[]): boolean {
+    return this.isTenantAdmin(roleAssignments);
+  }
+
+  /**
+   * Creating/administratively verifying PersonRelationships is
+   * TENANT_ADMIN-only (Phase 6, section 16) — deliberately no automatic
+   * legal verification workflow yet, see PHASE_6_GUARDIAN_INVITATIONS_REPORT.md.
+   */
+  canManageRelationships(roleAssignments: AuthorizationRoleAssignment[]): boolean {
+    return this.isTenantAdmin(roleAssignments);
+  }
+
+  /**
+   * The tenant-wide list of Persons a given caller has verified guardian
+   * access to (Phase 6, sections 17/18): only VERIFIED `PARENT`/
+   * `LEGAL_GUARDIAN` relationships grant read access to a child's data —
+   * `EMERGENCY_CONTACT` and unverified (`PENDING`) relationships
+   * deliberately do not (a relationship record alone is not an
+   * authorization grant).
+   */
+  getGuardianChildPersonIds(relationships: AuthorizationRelationship[]): string[] {
+    return relationships
+      .filter(
+        (r) =>
+          r.status === "VERIFIED" && (r.type === "PARENT" || r.type === "LEGAL_GUARDIAN"),
+      )
+      .map((r) => r.toPersonId);
+  }
+
+  /**
+   * The three coexisting read-access paths for a Person's own data (Phase
+   * 6, section 19): SELF (a User reading their own linked Person) or
+   * RELATIONSHIP (a verified guardian reading their own child) — RBAC
+   * (`canListPersons`/`canOnPerson`) is evaluated separately by the
+   * caller alongside this, not folded in here, since it depends on
+   * context this method doesn't need (department scope etc.).
+   */
+  canAccessPersonAsSelfOrGuardian(
+    callerPersonId: string,
+    targetPersonId: string,
+    callerRelationships: AuthorizationRelationship[],
+  ): boolean {
+    if (callerPersonId === targetPersonId) return true;
+    return this.getGuardianChildPersonIds(callerRelationships).includes(targetPersonId);
   }
 }

@@ -6,6 +6,10 @@ vi.mock("@/app/actions", () => ({
   updatePersonAction: vi.fn(() => vi.fn()),
   grantRoleAction: vi.fn(() => vi.fn()),
   revokeRoleAction: vi.fn(() => vi.fn()),
+  inviteAccountAction: vi.fn(() => vi.fn()),
+  revokeInvitationAction: vi.fn(() => vi.fn()),
+  createRelationshipAction: vi.fn(() => vi.fn()),
+  revokeRelationshipAction: vi.fn(() => vi.fn()),
 }));
 
 import { PersonManagement } from "../person-management";
@@ -161,5 +165,137 @@ describe("PersonManagement", () => {
       />,
     );
     expect(screen.getByLabelText("Vereinsadministrator entfernen")).toBeInTheDocument();
+  });
+});
+
+describe("PersonManagement — Account", () => {
+  it("hides the account section when invitations are not provided", () => {
+    render(<PersonManagement persons={persons} canCreate={false} departments={[]} teams={[]} />);
+    expect(screen.queryByText("Account")).not.toBeInTheDocument();
+  });
+
+  it("shows 'Account verknüpft' when an invitation was accepted", () => {
+    render(
+      <PersonManagement
+        persons={[
+          {
+            id: "p1",
+            firstName: "Max",
+            lastName: "Mustermann",
+            canEdit: true,
+            invitations: [{ id: "i1", email: "max@example.invalid", status: "ACCEPTED" }],
+          },
+        ]}
+        canCreate={true}
+        departments={[]}
+        teams={[]}
+      />,
+    );
+    expect(screen.getByText("Account verknüpft")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Account einladen" })).not.toBeInTheDocument();
+  });
+
+  it("shows the pending status and a resend/revoke option for a PENDING invitation", () => {
+    render(
+      <PersonManagement
+        persons={[
+          {
+            id: "p1",
+            firstName: "Max",
+            lastName: "Mustermann",
+            canEdit: true,
+            invitations: [{ id: "i1", email: "max@example.invalid", status: "PENDING" }],
+          },
+        ]}
+        canCreate={true}
+        departments={[]}
+        teams={[]}
+      />,
+    );
+    expect(screen.getByText(/wartet auf annahme/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Erneut senden" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Widerrufen" })).toBeInTheDocument();
+  });
+
+  it("shows an invite form with no prior invitation", () => {
+    render(
+      <PersonManagement
+        persons={[
+          { id: "p1", firstName: "Max", lastName: "Mustermann", canEdit: true, invitations: [] },
+        ]}
+        canCreate={true}
+        departments={[]}
+        teams={[]}
+      />,
+    );
+    expect(screen.getByLabelText(/e-mail-adresse für einladung/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Account einladen" })).toBeInTheDocument();
+  });
+});
+
+describe("PersonManagement — Beziehungen", () => {
+  it("hides the relationships section when not provided", () => {
+    render(<PersonManagement persons={persons} canCreate={false} departments={[]} teams={[]} />);
+    expect(screen.queryByText("Beziehungen")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty state without relationships", () => {
+    render(
+      <PersonManagement
+        persons={[
+          { id: "p1", firstName: "Max", lastName: "Mustermann", canEdit: true, relationships: [] },
+        ]}
+        canCreate={true}
+        departments={[]}
+        teams={[]}
+      />,
+    );
+    expect(screen.getByText(/keine beziehungen hinterlegt/i)).toBeInTheDocument();
+  });
+
+  it("shows a guardian relationship with German labels in both directions", () => {
+    render(
+      <PersonManagement
+        persons={[
+          {
+            id: "p1",
+            firstName: "Anna",
+            lastName: "Mustermann",
+            canEdit: true,
+            relationships: [
+              {
+                id: "rel1",
+                type: "LEGAL_GUARDIAN",
+                direction: "AS_GUARDIAN",
+                otherPersonId: "p2",
+                otherPersonFirstName: "Max",
+                otherPersonLastName: "Mustermann",
+              },
+            ],
+          },
+          { id: "p2", firstName: "Max", lastName: "Mustermann", canEdit: false },
+        ]}
+        canCreate={true}
+        departments={[]}
+        teams={[]}
+      />,
+    );
+    expect(screen.getByText("Erziehungsberechtigter von Max Mustermann")).toBeInTheDocument();
+  });
+
+  it("shows the add-relationship form with a person picker and type picker", () => {
+    render(
+      <PersonManagement
+        persons={[
+          { id: "p1", firstName: "Anna", lastName: "Mustermann", canEdit: true, relationships: [] },
+          { id: "p2", firstName: "Max", lastName: "Mustermann", canEdit: false },
+        ]}
+        canCreate={true}
+        departments={[]}
+        teams={[]}
+      />,
+    );
+    expect(screen.getByLabelText("Person auswählen")).toBeInTheDocument();
+    expect(screen.getByLabelText("Beziehungstyp")).toBeInTheDocument();
   });
 });

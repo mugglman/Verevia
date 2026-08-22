@@ -95,6 +95,15 @@ enum TeamMemberStatus {
   INACTIVE
 }
 
+/// Lebenszyklus einer AccountInvitation. Bewusst nur vier Zustände, keine
+/// Workflow-Engine — siehe Modellkommentar an AccountInvitation.
+enum AccountInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
 // ---------------------------------------------------------------------------
 // better-auth-eigene Modelle (generiert via `npx @better-auth/cli generate`,
 // siehe packages/auth/src/index.ts). `User` ist um das domänenspezifische
@@ -119,6 +128,7 @@ model User {
   accounts                Account[]
   memberships             Membership[]
   platformRoleAssignments PlatformRoleAssignment[]
+  sentInvitations         AccountInvitation[]
 
   @@unique([email])
   @@map("user")
@@ -212,6 +222,7 @@ model Tenant {
   personRelationships PersonRelationship[]
   teams               Team[]
   teamMembers         TeamMember[]
+  accountInvitations  AccountInvitation[]
 
   @@map("tenant")
 }
@@ -284,6 +295,7 @@ model Person {
   relationshipsAsChild    PersonRelationship[] @relation("RelationshipToPerson")
   verifiedRelationships   PersonRelationship[] @relation("RelationshipVerifiedBy")
   teamMemberships         TeamMember[]         @relation("PersonTeamMemberships")
+  accountInvitations      AccountInvitation[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -474,4 +486,69 @@ model TeamMember {
   @@index([personId])
   @@index([teamId])
   @@map("team_member")
+}
+
+/// Account-Einladung (Phase 6): "lade diese Person zu einem Login-Account
+/// ein" — der einzige Weg, wie eine `Person` erstmals mit einem `User`
+/// verknüpft wird (über eine `Membership`, sobald die Einladung akzeptiert
+/// wurde). Bewusst eine eigene Entity statt eines Felds an `Person`: der
+/// Lebenszyklus (Token, Ablauf, mehrere Einladungsversuche über die Zeit)
+/// hat nichts mit der fachlichen Bedeutung von `Person` zu tun.
+///
+/// Sicherheit: Es wird ausschließlich `tokenHash` gespeichert, niemals der
+/// rohe Token (siehe `apps/api/src/invitations/invitations.service.ts` —
+/// `crypto.randomBytes` + `crypto.createHash('sha256')`, keine
+/// selbstgebaute Kryptographie). Der rohe Token existiert nur einmalig im
+/// Response-Body der Erstellung bzw. im E-Mail-Text — nie in Logs, nie in
+/// Fehlermeldungen.
+///
+/// `email` ist bewusst auf der Einladung gespeichert (nicht nur auf
+/// `Person.contactEmail`, das optional/veränderlich ist) — die Einladung
+/// bindet sich an eine konkrete Adresse zum Einladungszeitpunkt; beim
+/// Akzeptieren wird geprüft, dass die eingeloggte Session exakt zu dieser
+/// Adresse gehört (siehe Service).
+///
+/// Höchstens eine PENDING-Einladung pro Person gleichzeitig — partieller
+/// Unique-Index in der Migration (Prisma 6 unterstützt WHERE-Klauseln in
+/// `@@unique` nicht deklarativ, siehe TeamMember für dasselbe Muster).
+/// Ein erneutes Versenden widerruft die vorherige PENDING-Einladung
+/// (macht ihren Token ungültig) statt eine zweite parallel gültige zu
+/// erzeugen.
+///
+/// BEWUSST OHNE Row-Level-Security (anders als die übrigen tenant-
+/// gebundenen Tabellen) — exakt derselbe Grund wie bei `Tenant` (siehe
+/// dort): der öffentliche Annahme-Flow (`GET /api/v1/invitations/:token`,
+/// `POST /api/v1/invitations/accept`) kennt den Tenant naturgemäß noch
+/// NICHT — er wird über den Token erst ermittelt, ein klassisches
+/// Henne-Ei-Problem für tenant-kontext-basiertes RLS. Die Sicherheits-
+/// grenze hier ist nicht die Tenant-Zugehörigkeit, sondern der Besitz des
+/// rohen Tokens (256 Bit Entropie, siehe `tokenHash`) — funktional
+/// äquivalent zu jedem Passwort-Reset-Link-Muster. Alle verwaltenden
+/// Operationen (anlegen/auflisten/widerrufen durch TENANT_ADMIN) filtern
+/// dennoch explizit nach `tenantId` in `InvitationsService` (Application-
+/// Layer-Schutz, auch ohne DB-erzwungenes RLS) und laufen weiterhin über
+/// `getTenantPrisma` für die dabei mitbenötigten RLS-geschützten
+/// `Person`-Zugriffe. Die Composite-FK `(tenantId, personId) →
+/// person(tenantId, id)` bleibt bestehen — verhindert weiterhin auf
+/// DB-Ebene, dass eine Einladung eine Person eines anderen Tenants
+/// referenziert, unabhängig von RLS.
+model AccountInvitation {
+  id              String                  @id @default(uuid())
+  tenantId        String
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  personId        String
+  person          Person                  @relation(fields: [tenantId, personId], references: [tenantId, id], onDelete: Restrict)
+  email           String
+  tokenHash       String                  @unique
+  status          AccountInvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  invitedByUserId String
+  invitedByUser   User                    @relation(fields: [invitedByUserId], references: [id], onDelete: Restrict)
+  acceptedAt      DateTime?
+  createdAt       DateTime                @default(now())
+
+  @@index([tenantId])
+  @@index([personId])
+  @@index([email])
+  @@map("account_invitation")
 }

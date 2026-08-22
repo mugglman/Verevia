@@ -4,7 +4,9 @@ import { resolvePilotTenantId } from "@/lib/tenant";
 import { Nav } from "@/components/nav";
 import {
   PersonManagement,
+  type PersonManagementInvitation,
   type PersonManagementPerson,
+  type PersonManagementRelationship,
   type PersonManagementRole,
 } from "@/components/person-management";
 import type { AddRoleFormDepartment, AddRoleFormTeam } from "@/components/add-role-form";
@@ -58,27 +60,43 @@ export default async function PersonenPage() {
 
   const { items: persons, canCreate } = personsResult.data;
 
-  // Role management (list roles, department/team pickers) is TENANT_ADMIN-
-  // only — `canCreate` on the person list is derived from exactly that
-  // same check (see apps/api/src/persons/persons.service.ts), so it
-  // doubles as "may the viewer manage roles" without a dedicated API call.
+  // Role/account/relationship management is TENANT_ADMIN-only — `canCreate`
+  // on the person list is derived from exactly that same check (see
+  // apps/api/src/persons/persons.service.ts), so it doubles as "may the
+  // viewer manage these" without a dedicated API call.
   let departments: AddRoleFormDepartment[] = [];
   let teams: AddRoleFormTeam[] = [];
-  let personsWithRoles: PersonManagementPerson[] = persons;
+  let personsWithDetails: PersonManagementPerson[] = persons;
 
   if (canCreate) {
-    const [departmentsResult, teamsResult, ...roleResults] = await Promise.all([
+    const [departmentsResult, teamsResult, ...detailResults] = await Promise.all([
       apiFetch<DepartmentListResponse>("/api/v1/departments", tenantId),
       apiFetch<AddRoleFormTeam[]>("/api/v1/teams", tenantId),
-      ...persons.map((p) => apiFetch<PersonManagementRole[]>(`/api/v1/persons/${p.id}/roles`, tenantId)),
+      ...persons.flatMap((p) => [
+        apiFetch<PersonManagementRole[]>(`/api/v1/persons/${p.id}/roles`, tenantId),
+        apiFetch<PersonManagementInvitation[]>(`/api/v1/persons/${p.id}/invitations`, tenantId),
+        apiFetch<PersonManagementRelationship[]>(`/api/v1/persons/${p.id}/relationships`, tenantId),
+      ]),
     ]);
     departments = departmentsResult.ok ? departmentsResult.data.items : [];
     teams = teamsResult.ok ? teamsResult.data : [];
 
     const rolesByPersonId = new Map<string, PersonManagementRole[]>();
+    const invitationsByPersonId = new Map<string, PersonManagementInvitation[]>();
+    const relationshipsByPersonId = new Map<string, PersonManagementRelationship[]>();
     persons.forEach((p, index) => {
-      const result = roleResults[index];
-      rolesByPersonId.set(p.id, result?.ok ? result.data : []);
+      const rolesResult = detailResults[index * 3];
+      const invitationsResult = detailResults[index * 3 + 1];
+      const relationshipsResult = detailResults[index * 3 + 2];
+      rolesByPersonId.set(p.id, rolesResult?.ok ? (rolesResult.data as PersonManagementRole[]) : []);
+      invitationsByPersonId.set(
+        p.id,
+        invitationsResult?.ok ? (invitationsResult.data as PersonManagementInvitation[]) : [],
+      );
+      relationshipsByPersonId.set(
+        p.id,
+        relationshipsResult?.ok ? (relationshipsResult.data as PersonManagementRelationship[]) : [],
+      );
     });
 
     // Simple tenant-wide count of TENANT_ADMIN/TENANT assignments — used
@@ -88,13 +106,15 @@ export default async function PersonenPage() {
       .filter((r) => r.role === "TENANT_ADMIN" && !r.departmentName && !r.teamName);
     const isLastTenantAdmin = allTenantAdminRoles.length <= 1;
 
-    personsWithRoles = persons.map((p) => ({
+    personsWithDetails = persons.map((p) => ({
       ...p,
       roles: (rolesByPersonId.get(p.id) ?? []).map((r) =>
         r.role === "TENANT_ADMIN" && !r.departmentName && !r.teamName
           ? { ...r, isLastTenantAdmin }
           : r,
       ),
+      invitations: invitationsByPersonId.get(p.id) ?? [],
+      relationships: relationshipsByPersonId.get(p.id) ?? [],
     }));
   }
 
@@ -102,7 +122,7 @@ export default async function PersonenPage() {
     <>
       <Nav />
       <PersonManagement
-        persons={personsWithRoles}
+        persons={personsWithDetails}
         canCreate={canCreate}
         departments={departments}
         teams={teams}

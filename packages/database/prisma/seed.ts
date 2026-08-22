@@ -6,18 +6,20 @@ import { prisma, getTenantPrisma } from "../src/index";
  * in Phase 4 (section 25) with a TeamMember assignment for each demo
  * person — fachliche Mannschaftszugehörigkeit, siehe schema.prisma-
  * Kommentar am Modell `TeamMember` (bewusst getrennt von `Membership`/
- * `RoleAssignment`) — and in Phase 5 (section 29) with a demo role
+ * `RoleAssignment`) — in Phase 5 (section 29) with a demo role
  * constellation: Max Mustermann is additionally COACH of E1 (a coach who's
  * also an E1 TeamMember — an ordinary real-club combination), and a third
  * fictional person, Petra Beispiel, is TENANT_ADMIN (Vereinsadministrator)
- * with no team assignment.
+ * with no team assignment — and in Phase 6 (section 30) with a fourth
+ * fictional person, Anna Mustermann, administratively verified as
+ * LEGAL_GUARDIAN of Max Mustermann (demonstrates the guardian ReBAC path).
  *
  * Deliberately contains NO real personal data — the demo persons use
  * obviously fictional, clearly-placeholder German names ("Max Mustermann" /
- * "Erika Musterfrau" / "Petra Beispiel" — "Beispiel" literally means
- * "example"), not any real club member or anyone connected to this
- * project. Team names ("E1"/"E2") are generic youth-team labels, not tied
- * to any real roster.
+ * "Erika Musterfrau" / "Petra Beispiel" / "Anna Mustermann" — "Beispiel"
+ * literally means "example"), not any real club member or anyone connected
+ * to this project. Team names ("E1"/"E2") are generic youth-team labels,
+ * not tied to any real roster.
  *
  * Tenant creation uses the plain, non-tenant-scoped `prisma` client (Tenant
  * itself carries no RLS policy, see schema.prisma). Everything below it
@@ -119,13 +121,55 @@ async function main() {
     });
   }
 
+  // Phase 6, section 30: a clear demo constellation for the guardian
+  // relationship / ReBAC feature — Anna Mustermann (new, fictional,
+  // shares Max's surname as a plausible parent/child pair) is
+  // administratively verified as LEGAL_GUARDIAN of Max Mustermann. Max
+  // already being COACH of E1 (see above) doesn't conflict with this —
+  // a teenage assistant coach with a legal guardian is not an unusual
+  // real-club combination. No login/User/Membership is seeded for Anna
+  // here (consistent with this file's existing scope — every other demo
+  // person is data-only too); a real account is created through the
+  // actual invitation flow (API/E2E fixtures), not baked into the seed.
+  let annaMustermann = await db.person.findFirst({
+    where: { tenantId: tenant.id, firstName: "Anna", lastName: "Mustermann" },
+  });
+  if (!annaMustermann) {
+    annaMustermann = await db.person.create({
+      data: { tenantId: tenant.id, firstName: "Anna", lastName: "Mustermann" },
+    });
+  }
+  const existingGuardianRelationship = await db.personRelationship.findFirst({
+    where: {
+      tenantId: tenant.id,
+      fromPersonId: annaMustermann.id,
+      toPersonId: maxMustermann.id,
+      type: "LEGAL_GUARDIAN",
+    },
+  });
+  if (!existingGuardianRelationship) {
+    await db.personRelationship.create({
+      data: {
+        tenantId: tenant.id,
+        fromPersonId: annaMustermann.id,
+        toPersonId: maxMustermann.id,
+        type: "LEGAL_GUARDIAN",
+        status: "VERIFIED",
+        isLegalGuardian: true,
+      },
+    });
+  }
+
   console.log(`Seeded tenant "${tenant.name}" (${tenant.id})`);
   console.log(`Seeded department "${department.name}" (${department.id})`);
   console.log(`Seeded ${demoTeamNames.length} teams: ${demoTeamNames.join(", ")}`);
   console.log(
     `Seeded ${demoPersons.length} fictional demo persons, each assigned to a team.`,
   );
-  console.log(`Seeded role assignments: Max Mustermann as Trainer (E1), Petra Beispiel as Vereinsadministrator.`);
+  console.log(
+    `Seeded role assignments: Max Mustermann as Trainer (E1), Petra Beispiel as Vereinsadministrator.`,
+  );
+  console.log(`Seeded relationship: Anna Mustermann as Erziehungsberechtigte of Max Mustermann.`);
 }
 
 main()
