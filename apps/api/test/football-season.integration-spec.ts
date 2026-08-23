@@ -418,6 +418,7 @@ describe("TeamSeasons API — authorization and football-only guardrail", () => 
       .send({ teamId: teamE1Id, seasonId: seasonFootballId, ageGroupId: ageGroupId });
     expect(response.status).toBe(201);
     expect(response.body.teamId).toBe(teamE1Id);
+    await adminPrisma.teamSeason.delete({ where: { id: response.body.id } });
   });
 
   it("rejects a team season for a non-football (Tennis) team", async () => {

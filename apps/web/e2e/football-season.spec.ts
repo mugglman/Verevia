@@ -25,25 +25,35 @@ test("TENANT_ADMIN sieht die aktive Saison und Mannschaften mit Altersklasse", a
   await page.getByRole("link", { name: "Saisons verwalten" }).click();
   await expect(page.getByRole("heading", { name: /saisons – fußball/i })).toBeVisible();
   await expect(page.getByText("2026/2027")).toBeVisible();
-  await expect(page.getByText("Aktiv")).toBeVisible();
+  // Scoped to the status badge — "Aktiv" also appears as an <option> text
+  // inside the (hidden until opened) status <select> of the edit form.
+  await expect(page.locator("span.rounded-full", { hasText: "Aktiv" })).toBeVisible();
 });
 
 test("TENANT_ADMIN legt eine neue Saison an und bearbeitet sie", async ({ page }) => {
+  // Unique per run (no DELETE endpoint exists to clean this up afterwards,
+  // and Season has no "E2E"-prefix fixture-cleanup convention like Person
+  // — see e2e/global-setup.ts) so repeated runs never collide on name.
+  const seasonName = `E2E Saison ${Date.now()}`;
+
   await page.goto("/fussball/saisons");
 
-  await page.getByLabel(/name der neuen saison/i).fill("2027/2028");
+  await page.getByLabel(/name der neuen saison/i).fill(seasonName);
   await page.getByLabel(/beginn der neuen saison/i).fill("2027-08-01");
   await page.getByLabel(/ende der neuen saison/i).fill("2028-06-30");
   await page.getByRole("button", { name: "Saison anlegen" }).click();
 
-  await expect(page.getByText("2027/2028")).toBeVisible();
-  await expect(page.getByText("Geplant")).toBeVisible();
+  await expect(page.getByText(seasonName, { exact: true })).toBeVisible();
+  // Scoped to the status badge — "Geplant" also appears as <option> text
+  // inside multiple status <select> elements on this page.
+  await expect(page.locator("span.rounded-full", { hasText: "Geplant" }).first()).toBeVisible();
 
-  const newSeasonInput = page.locator('input[aria-label="Saisonname"][value="2027/2028"]');
-  await newSeasonInput.fill("2027/2028 (bearbeitet)");
+  const newSeasonInput = page.locator(`input[aria-label="Saisonname"][value="${seasonName}"]`);
+  const editedName = `${seasonName} (bearbeitet)`;
+  await newSeasonInput.fill(editedName);
   await newSeasonInput.locator("xpath=ancestor::form").getByRole("button", { name: "Speichern" }).click();
 
-  await expect(page.getByText("2027/2028 (bearbeitet)")).toBeVisible();
+  await expect(page.getByText(editedName, { exact: true })).toBeVisible();
 });
 
 test.describe("COACH E1", () => {
