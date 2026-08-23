@@ -1,8 +1,8 @@
 # Deployment
 
-> Status (aktualisiert Phase 7, 2026-08-22): Eine permanente DEV-Umgebung läuft real auf dem Hostinger-VPS unter `https://app.verevia.app` / `https://api.verevia.app`, siehe [PHASE_7_DEV_DEPLOYMENT_REPORT.md](../PHASE_7_DEV_DEPLOYMENT_REPORT.md) für den vollständigen Bericht. **Produktivbetrieb existiert weiterhin nicht** — `verevia-prod` bleibt unangetastet, dieses Dokument beschreibt für den Produktivteil weiterhin die geplante Zielausstattung.
+> Status (aktualisiert Phase 8, 2026-08-23): Die permanente DEV-Umgebung auf dem Hostinger-VPS (`https://app.verevia.app` / `https://api.verevia.app`, seit Phase 7) wird seit Phase 8 automatisiert betrieben — Merge nach `main` → CI grün → Docker-Images gebaut und nach GHCR gepusht → automatischer Rollout auf dem VPS inkl. Backup, Migration und Healthchecks. Siehe [PHASE_7_DEV_DEPLOYMENT_REPORT.md](../PHASE_7_DEV_DEPLOYMENT_REPORT.md) und [PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md](../PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md) für die vollständigen Berichte. **Produktivbetrieb existiert weiterhin nicht** — `verevia-prod` bleibt unangetastet, dieses Dokument beschreibt für den Produktivteil weiterhin die geplante Zielausstattung.
 
-## Permanente DEV-Umgebung (Phase 7)
+## Permanente DEV-Umgebung (Phase 7, automatisiert seit Phase 8)
 
 | Aspekt | Wert |
 |---|---|
@@ -13,8 +13,11 @@
 | HTTPS | Let's-Encrypt-Zertifikate über Traefiks bestehenden `letsencrypt`-Resolver |
 | Deployment-Pfad auf dem VPS | `/srv/verevia/dev` — ein echter Git-Checkout dieses Repositories |
 | Docker-Netzwerke | `verevia-dev` (intern, Postgres↔api/web), `verevia-proxy` (Traefik↔api/web) — beide bereits vor Phase 7 auf dem VPS vorbereitet |
+| Images | `ghcr.io/mugglman/verevia-api`, `ghcr.io/mugglman/verevia-web` — gebaut und gepusht von `.github/workflows/deploy-dev.yml`, getaggt mit `:dev` und dem Git-Short-SHA |
+| Rollout-Trigger | automatisch nach jedem erfolgreichen CI-Lauf auf `main` (`workflow_run`), oder manuell per `workflow_dispatch` |
+| Deployment-User (VPS) | `verevia-deploy` — eigener Linux-User, dediziertes SSH-Deployment-Ziel, **kein** persönlicher Zugang |
 
-Build-/Compose-Konfiguration: [infrastructure/docker/api.Dockerfile](../../infrastructure/docker/api.Dockerfile), [web.Dockerfile](../../infrastructure/docker/web.Dockerfile), [docker-compose.dev-deploy.yml](../../infrastructure/docker/docker-compose.dev-deploy.yml). Deployment-Ablauf, Secrets-Konzept, Backup, Sicherheitsprüfung: siehe [PHASE_7_DEV_DEPLOYMENT_REPORT.md](../PHASE_7_DEV_DEPLOYMENT_REPORT.md).
+Build-/Compose-/Deployment-Konfiguration: [infrastructure/docker/api.Dockerfile](../../infrastructure/docker/api.Dockerfile), [web.Dockerfile](../../infrastructure/docker/web.Dockerfile), [docker-compose.dev-deploy.yml](../../infrastructure/docker/docker-compose.dev-deploy.yml), [.github/workflows/deploy-dev.yml](../../.github/workflows/deploy-dev.yml), [infrastructure/scripts/deploy-dev.sh](../../infrastructure/scripts/deploy-dev.sh). Deployment-Ablauf, Secrets-Konzept, Backup, Rollback, Sicherheitsprüfung: siehe [PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md](../PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md) (Phase-7-Baseline: [PHASE_7_DEV_DEPLOYMENT_REPORT.md](../PHASE_7_DEV_DEPLOYMENT_REPORT.md)).
 
 ## Grundsätze
 
@@ -29,7 +32,7 @@ Build-/Compose-Konfiguration: [infrastructure/docker/api.Dockerfile](../../infra
 |---|---|---|
 | Container | Docker | **Im DEV-Einsatz** (Phase 7) |
 | Reverse Proxy | Traefik | **Entschieden, im Einsatz** (seit vor Phase 1, DEV-Router seit Phase 7) |
-| CI/CD | GitHub Actions | Im Einsatz für Quality Gates (`.github/workflows/ci.yml`); Image-Build/-Push (GHCR) für Deployments noch nicht automatisiert — Images werden aktuell direkt auf dem VPS gebaut, siehe [PHASE_7_DEV_DEPLOYMENT_REPORT.md](../PHASE_7_DEV_DEPLOYMENT_REPORT.md) |
+| CI/CD | GitHub Actions | **Vollständig im Einsatz**: Quality Gates (`.github/workflows/ci.yml`, unverändert seit Phase 1) + Image-Build/-Push nach GHCR + automatischer DEV-Rollout (`.github/workflows/deploy-dev.yml`, Phase 8) |
 | Hosting | Hostinger-VPS | **Im DEV-Einsatz** |
 | Monitoring | Uptime Kuma, später eventuell Grafana | Geplant, noch nicht eingerichtet |
 | Entwicklungs-E-Mail | Aktuell `ConsoleMailProvider` (siehe `apps/api/src/mail/`, Phase 6) statt Mailpit | Bewusst vereinfacht, kein Blocker |
@@ -71,13 +74,13 @@ Vorgesehen ist zunächst eine einfache Verfügbarkeitsüberwachung über Uptime 
 
 ## Backups
 
-Für die DEV-Umgebung existiert seit Phase 7 eine Baseline: [`infrastructure/scripts/backup-dev-db.sh`](../../infrastructure/scripts/backup-dev-db.sh), ein einfacher `pg_dump` nach `/srv/verevia/backups`, manuell oder per Cron ausführbar. Bewusst ohne Retention/Rotation/Offsite-Kopie — das bleibt, ebenso wie ein Restore-Test, ein späteres Arbeitspaket, ausdrücklich auch **vor** jedem Produktivbetrieb nachzuholen.
+[`infrastructure/scripts/backup-dev-db.sh`](../../infrastructure/scripts/backup-dev-db.sh) (Phase 7, erweitert Phase 8): ein `pg_dump` nach `/srv/verevia/backups`, jetzt mit SHA-taggten Dateinamen und einfacher zählbasierter Retention (Standard: die letzten 14 Dumps, siehe Skript-Kommentar). Läuft automatisch vor jedem automatisierten Deployment (siehe `deploy-dev.sh`) — ein fehlgeschlagenes Backup bricht das Deployment ab, bevor irgendetwas verändert wird. Ein echter Restore (in eine isolierte temporäre Datenbank, nicht die laufende DEV-DB) wurde in Phase 8 real getestet, siehe [PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md](../PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md). Weiterhin bewusst ohne Offsite-Kopie — das bleibt ein späteres Arbeitspaket, ausdrücklich auch **vor** jedem Produktivbetrieb nachzuholen.
 
 ## Offene Entscheidungen
 
 - produktiver E-Mail-Anbieter
-- Backup-Retention/-Rotation/Offsite-Kopie, regelmäßiger Restore-Test
+- Backup-Offsite-Kopie
+- regelmäßiger (statt punktueller) Restore-Test
 - Monitoring/Alerting über Docker-Healthchecks hinaus
 - Storage-Lösung für Dateien und Medien
-- automatisierter Image-Build/-Push (z. B. GHCR) statt Build direkt auf dem VPS
-- Produktivumgebung insgesamt (eigenes Arbeitspaket, siehe [PHASE_7_DEV_DEPLOYMENT_REPORT.md](../PHASE_7_DEV_DEPLOYMENT_REPORT.md), „nächster empfohlener Schritt")
+- Produktivumgebung insgesamt (eigenes Arbeitspaket, siehe [PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md](../PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md), „nächster empfohlener Schritt")
