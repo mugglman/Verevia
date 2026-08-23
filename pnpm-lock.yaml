@@ -200,6 +200,12 @@ importers:
       '@prisma/client':
         specifier: 6.19.3
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      prisma:
+        specifier: 6.19.3
+        version: 6.19.3(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.12
     devDependencies:
       '@types/node':
         specifier: 26.2.0
@@ -210,12 +216,6 @@ importers:
       eslint:
         specifier: ^9.18.0
         version: 9.39.5(jiti@2.7.0)
-      prisma:
-        specifier: 6.19.3
-        version: 6.19.3(typescript@5.9.3)
-      tsx:
-        specifier: ^4.19.2
-        version: 4.23.12
       typescript:
         specifier: 5.9.3
         version: 5.9.3

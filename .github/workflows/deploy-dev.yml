@@ -1,0 +1,102 @@
+name: Deploy DEV
+
+# Gated on the existing CI workflow actually succeeding on main — this
+# workflow does not re-run install/lint/typecheck/test/build itself, it
+# reacts to CI's own completion so the quality pipeline in ci.yml stays
+# the single source of truth and is never duplicated or weakened (Phase 8,
+# section 8/9). See docs/PHASE_8_AUTOMATED_DEV_DEPLOYMENT_REPORT.md.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+# Only one DEV deployment at a time — migrations must never run
+# concurrently against the same database. Does NOT cancel an in-progress
+# deployment (a half-applied migration is worse than a queued one).
+concurrency:
+  group: verevia-dev-deployment
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build and push images
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.vars.outputs.sha }}
+    steps:
+      - name: Checkout (deployed commit)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+
+      - name: Resolve deploy tag
+        id: vars
+        run: echo "sha=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/api.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/mugglman/verevia-api:dev
+            ghcr.io/mugglman/verevia-api:${{ steps.vars.outputs.sha }}
+          cache-from: type=gha,scope=verevia-api
+          cache-to: type=gha,mode=max,scope=verevia-api
+
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/web.Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.verevia.app
+          tags: |
+            ghcr.io/mugglman/verevia-web:dev
+            ghcr.io/mugglman/verevia-web:${{ steps.vars.outputs.sha }}
+          cache-from: type=gha,scope=verevia-web
+          cache-to: type=gha,mode=max,scope=verevia-web
+
+  deploy:
+    name: Deploy to VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up deploy key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # Never echoed/logged — GitHub Actions also automatically masks
+          # any occurrence of this exact secret value in step output.
+          printf '%s\n' "${{ secrets.DEV_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ vars.DEV_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Trigger deploy-dev.sh on the VPS
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes \
+            "${{ vars.DEV_SSH_USER }}@${{ vars.DEV_SSH_HOST }}" \
+            "${{ needs.build-and-push.outputs.sha }}"
+
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
