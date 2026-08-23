@@ -83,6 +83,12 @@ COPY --from=prod-deps --chown=verevia:verevia /app ./
 COPY --from=builder --chown=verevia:verevia /app/packages/database/dist ./packages/database/dist
 COPY --from=builder --chown=verevia:verevia /app/packages/auth/dist ./packages/auth/dist
 COPY --from=builder --chown=verevia:verevia /app/apps/api/dist ./apps/api/dist
+# prisma/seed.ts imports its sibling module via a relative source path
+# (`../src/index`, not the compiled dist/ output or the package name) —
+# correct for how it's normally run (tsx, from within a real checkout),
+# but that means the raw TS source must exist here too for the seed step
+# of `docker compose run migrate` to work from this image.
+COPY --from=builder --chown=verevia:verevia /app/packages/database/src ./packages/database/src
 USER verevia
 ENV NODE_ENV=production
 EXPOSE 3001
