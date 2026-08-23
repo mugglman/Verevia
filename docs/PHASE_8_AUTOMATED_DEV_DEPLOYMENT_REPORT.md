@@ -8,6 +8,43 @@ PR #7 (`chore(deploy): add persistent Verevia development environment`) war voll
 
 `chore/automated-dev-deployment` von `main` (`6fdd563`) erstellt.
 
+## 2a. Nachtrag: PR #8 gemergt, vollständiger realer End-to-End-Nachweis
+
+PR #8 war vollständig grün (`mergeable_state: clean`, 0 Secret-Scanning-Alerts, keine Änderungen an `verevia-prod` im Diff). Per `gh pr merge --squash` gemergt, Merge-SHA `b8799e2`.
+
+Damit war zum ersten Mal die Voraussetzung erfüllt, die in Abschnitt 6/18 als strukturell blockierend beschrieben war (`workflow_dispatch`/`workflow_run` benötigen den Workflow auf dem Default-Branch). Unmittelbar nach dem Merge:
+
+1. **CI auf `main`**: grün (`gh run watch`, Exit 0).
+2. **`workflow_run` tatsächlich automatisch ausgelöst**: ja, ohne manuelles Zutun, unmittelbar nach dem grünen CI-Lauf (`Deploy DEV`, Run-ID `32625837276`).
+3. **Build-and-push-Job** (13 min 20 s): API- und Web-Image erfolgreich gebaut und nach GHCR gepusht.
+4. **Deploy-Job** (1 min 28 s): SSH als `verevia-deploy`, Forced Command ausgelöst, `deploy-dev.sh` lief vollständig durch — Log-Auszug (aus dem echten GitHub-Actions-Log extrahiert):
+
+   ```text
+   ==> Verevia DEV deployment starting: tag=b8799e234067
+   ==> [1/8] Updating deployment checkout …
+   HEAD is now at b8799e2 chore(ci): automate Verevia development deployment (#8)
+   ==> [2/8] Backing up DEV database before touching anything
+   Backing up verevia-dev-postgres … /srv/verevia/backups/verevia-dev-20260823T074606Z-b8799e234067.sql.gz
+   Done: 8.0K written.
+   ==> [4/8] Pulling images for tag b8799e234067
+   ==> [6/8] Running migrations (prisma migrate deploy + seed)
+   Database schema is up to date!
+   Seeded tenant "TSV Benediktbeuern" …
+   ==> [7/8] Rolling out api + web (tag b8799e234067)
+   ==> [8/8] Healthchecks + smoke test
+   ==> Deployment successful: b8799e234067
+   ```
+
+5. **GHCR-Verifikation** (öffentlicher, unauthentifizierter Registry-API-Abruf, kein Token nötig): beide Packages vorhanden, jeweils exakt mit den erwarteten zwei Tags — `ghcr.io/mugglman/verevia-api` → `["dev","b8799e234067"]`, `ghcr.io/mugglman/verevia-web` → `["dev","b8799e234067"]`. Der VPS-Pull erfolgte damit nachweislich real und anonym, wie in Abschnitt 3/10 vorhergesagt.
+6. **Live-Umgebung**: `https://api.verevia.app/health` → `{"status":"ok","version":"b8799e234067"}` (die neue Version-Anzeige funktioniert also real, nicht nur im vorgezogenen Test aus Abschnitt 18), `/health/ready` → `{"status":"ok","database":"ok"}`, `app.verevia.app` weiterhin korrektes Redirect-Verhalten.
+7. **Vollständiger authentifizierter Workflow-Test** (Playwright gegen die echten HTTPS-URLs, mit einem eigens für diesen Test angelegten, danach wieder vollständig entfernten `TENANT_ADMIN`-Testaccount — das ursprüngliche `dev-admin`-Passwort aus Phase 7 lag nicht mehr vor): Login ✓, Startseite zeigt „TSV Benediktbeuern" ✓, Fußball/E1 ✓, Personenverwaltung zeigt die Seed-Personen ✓, Rollen-Labels ✓, Beziehungs-Labels ✓, „Meine Kinder" lädt ✓ — **8/8 Prüfungen erfolgreich**.
+8. **Datenintegrität**: 4 Personen/1 Tenant vor und nach dem Deployment identisch (der zwischenzeitlich für Test 7 angelegte fünfte, testeigene Datensatz wurde vollständig wieder entfernt — inklusive eines eigenen kleinen Fehlers dabei: ein erster, an einem SQL-Syntaxfehler gescheiterter Anlegeversuch hinterließ eine verwaiste `Person`-Zeile ohne zugehörige `Membership`/`RoleAssignment`, die bei der Nachkontrolle auffiel und sauber entfernt wurde — am Ende wieder exakt 4 Personen, verifiziert).
+9. **Backup-Verifikation**: `verevia-dev-20260823T074606Z-b8799e234067.sql.gz`, 6 243 Bytes, `chmod 600`, enthält 15 `COPY`/`INSERT`-Anweisungen — nicht leer, nicht beschädigt.
+10. **Aufräumen**: ein verwaistes anonymes Docker-Volume (Rest eines früheren, in Abschnitt 16 bereits sauber abgeschlossen geglaubten Restore-Test-Containers — `docker rm` ohne `-v` lässt anonyme Volumes zurück) wurde bei dieser Nachkontrolle gefunden und entfernt. Danach: ausschließlich die drei erwarteten DEV-Container + `verevia-traefik`, ausschließlich das eine erwartete benannte Datenvolume.
+11. **Security-Re-Check**: keine Secrets im GitHub-Actions-Log (gezielt nach Private-Key-Markern und rohen Secret-Werten gesucht, keine Treffer), `verevia-prod`-Verzeichnis weiterhin leer/unangetastet, alle Docker-Netzwerke unverändert, Traefik weiterhin `running`.
+
+**Ergebnis: die vollständige Kette `main → CI → workflow_run → Image-Build → GHCR-Push → SSH → Forced Command → deploy-dev.sh → Backup → Migration → Rollout → Healthcheck → Smoke-Test` ist jetzt real, zusammenhängend und erfolgreich nachgewiesen** — nicht mehr nur in die in Abschnitt 18 beschriebenen drei unabhängigen Teile zerlegt.
+
 ## 3. GHCR
 
 `ghcr.io/mugglman/verevia-api`, `ghcr.io/mugglman/verevia-web`. Repository `mugglman/Verevia` ist **öffentlich** — Packages, die per `GITHUB_TOKEN` aus einem Workflow dieses Repos gepusht werden, sind damit standardmäßig ebenfalls öffentlich lesbar, ohne dass der VPS beim Pull überhaupt ein Credential benötigt (kein `docker login` auf dem VPS nötig — die einfachste, sicherste Variante: kein Pull-Token, der dort verwaltet/rotiert/geleakt werden könnte).
@@ -139,24 +176,24 @@ GitHub Secret: `DEV_SSH_PRIVATE_KEY`. GitHub Variables (bewusst *nicht* als Secr
 
 ## 22. VPS-Zustand
 
-`verevia-dev-api`/`verevia-dev-web`/`verevia-dev-postgres` laufen mit den in Phase 8 gebauten, registrierten Images (`ghcr.io/mugglman/verevia-{api,web}:4421031cc78f`), alle drei `healthy`. Restart real getestet (`docker compose restart`) — alle Container wieder gesund, Daten unverändert, `/health` und `/health/ready` weiterhin 200 nach dem Neustart. Keine verwaisten Test-Container/-Volumes zurückgelassen (Restore-Test-Container vollständig entfernt, verifiziert). `verevia-prod` unangetastet. **Nicht in dieser Phase behoben**, als bekanntes technisches Detail dokumentiert: die Runtime-Images sind mit ca. 1,7 GB deutlich größer als für ein schlankes Node/Nest/Next-Image üblich (üblich wären eher 150–400 MB) — vermutlich verursacht durch die jetzt in den Produktions-Dependencies enthaltenen Prisma-CLI-Engine-Binaries (Abschnitt 12/17). Funktional unproblematisch (92 GB frei auf dem VPS), aber ein sinnvoller Optimierungspunkt für später (z. B. `binaryTargets` in `schema.prisma` auf die tatsächlich benötigte Plattform beschränken).
+`verevia-dev-api`/`verevia-dev-web`/`verevia-dev-postgres` laufen mit den durch den echten automatischen Lauf gepushten und gepullten Images (`ghcr.io/mugglman/verevia-{api,web}:b8799e234067`), alle drei `healthy` — dies ist jetzt der reale, durch die GitHub-Actions-Pipeline selbst herbeigeführte Zustand, nicht mehr ein manuell nachgestellter. Restart real getestet (`docker compose restart`, vor dem Merge) — alle Container wieder gesund, Daten unverändert. Ein bei der Nachkontrolle gefundenes verwaistes anonymes Docker-Volume (Rest eines Restore-Tests) wurde entfernt, siehe Abschnitt 2a. `verevia-prod` unangetastet. **Nicht in dieser Phase behoben**, als bekanntes technisches Detail dokumentiert: die Runtime-Images sind mit ca. 1,7 GB deutlich größer als für ein schlankes Node/Nest/Next-Image üblich (üblich wären eher 150–400 MB) — vermutlich verursacht durch die jetzt in den Produktions-Dependencies enthaltenen Prisma-CLI-Engine-Binaries (Abschnitt 12/17). Funktional unproblematisch (92 GB frei auf dem VPS), aber ein sinnvoller Optimierungspunkt für später (z. B. `binaryTargets` in `schema.prisma` auf die tatsächlich benötigte Plattform beschränken).
 
 ## 23. Quality Gates
 
-Lokal: `pnpm install --frozen-lockfile`/`lint`/`typecheck`/`test`/`build` — alle grün (52 API-Tests inkl. der neuen Health-Version-Tests, 46 Web-Tests). Deployment: Image-Builds, Backup, Migration, Seed, Rollout, Healthchecks, externer Smoke-Test, Datenintegrität, Restart, Retention, Restore — alle real durchgeführt, siehe die jeweiligen Abschnitte oben. Nicht durchgeführt: ein echter GHCR-Push/Pull-Roundtrip und ein echter `workflow_dispatch`/`workflow_run`-Lauf über die tatsächliche GitHub-Actions-Oberfläche — beides strukturell erst nach dem Merge von PR #8 möglich (Abschnitt 6/10/18).
+Lokal: `pnpm install --frozen-lockfile`/`lint`/`typecheck`/`test`/`build` — alle grün (52 API-Tests inkl. der neuen Health-Version-Tests, 46 Web-Tests). Deployment: Image-Builds, Backup, Migration, Seed, Rollout, Healthchecks, externer Smoke-Test, Datenintegrität, Restart, Retention, Restore — alle real durchgeführt. **Nach dem Merge zusätzlich**: der komplette echte `workflow_run`-Lauf inkl. GHCR-Push/Pull und authentifiziertem Browser-Workflow-Test — siehe Abschnitt 2a. Damit sind inzwischen alle ursprünglich offenen Punkte aus Abschnitt 18 real abgedeckt.
 
 ## 24. GitHub/PR
 
-Branch `chore/automated-dev-deployment`, mehrere Commits (Automatisierungs-Grundgerüst, Dockerfile-Fix für `packages/database/src`), gepusht. **PR #8 wird im Anschluss an diesen Bericht erstellt, bewusst nicht gemergt.**
+Branch `chore/automated-dev-deployment`, mehrere Commits, gepusht, PR #8 erstellt und **gemergt** (Merge-SHA `b8799e2`, siehe Abschnitt 2a).
 
 ## 25. Verbleibende Risiken
 
-- GHCR-Push/Pull und der komplette `workflow_run`-getriggerte Automatiklauf sind bis zum ersten echten Merge nach `main` nicht real verifiziert (nur die darunterliegende Logik, siehe Abschnitt 18) — empfohlen: den ersten automatischen Lauf nach dem Merge aktiv beobachten (`gh run watch`).
 - Runtime-Image-Größe (~1,7 GB) — funktional unproblematisch, aber unnötig groß (Abschnitt 22).
 - Kein automatisches DB-Schema-Rollback (Abschnitt 19) — bewusste, dokumentierte Einschränkung, kein Blocker für DEV.
-- `verevia-deploy`s Docker-Gruppenmitgliedschaft ist keine echte Privilegientrennung von `maik` (Abschnitt 8/20) — die einzige wirksame Grenze ist der Forced Command.
+- `verevia-deploy`s Docker-Gruppenmitgliedschaft ist keine echte Privilegientrennung von `maik` (Abschnitt 8/20) — die einzige wirksame Grenze ist der Forced Command, real getestet (Abschnitt 9).
 - Backups weiterhin ohne Offsite-Kopie (unverändert aus Phase 7).
 - Postgres wird bei jeder Änderung an der gemeinsamen `.env` unnötig neu erstellt (bereits aus Phase 7 bekannt, unverändert) — Daten überleben das nachweislich, aber ein kurzer, vermeidbarer Moment ohne laufende DB pro `.env`-Edit.
+- Die für die Ersteinrichtung angelegte temporäre Sudoers-Regel (`/etc/sudoers.d/verevia-claude`, `maik ALL=(verevia-deploy) NOPASSWD: ALL`) ist **nicht** Teil der dauerhaften Architektur und muss vom Nutzer selbst entfernt werden (`sudo rm /etc/sudoers.d/verevia-claude`) — Claude hat dafür keine ausreichenden Rechte (siehe Abschnitt 2a/Sicherheitsprüfung).
 
 ## 26. Technische Schulden
 
@@ -167,4 +204,4 @@ Branch `chore/automated-dev-deployment`, mehrere Commits (Automatisierungs-Grund
 
 ## 27. Nächster empfohlener Schritt
 
-Nach der Freigabe von PR #8: mergen, danach den ersten automatischen Lauf (`workflow_run`, ausgelöst durch den grünen CI-Lauf auf `main`) aktiv beobachten und explizit bestätigen, dass GHCR-Push/Pull sowie der vollständige SSH-getriggerte Rollout genau wie in Abschnitt 18 einzeln verifiziert real funktionieren. Danach sinnvoll: Runtime-Image-Größe reduzieren, ein wiederkehrender Restore-Test, und — sobald fachlich gewünscht — ein eigenes Arbeitspaket für die echte Produktivumgebung (`verevia-prod`).
+Der automatisierte DEV-Deployment-Pfad ist jetzt vollständig real nachgewiesen. Sinnvolle nächste Schritte: die temporäre Sudoers-Regel entfernen (siehe Abschnitt 25), Runtime-Image-Größe reduzieren, ein wiederkehrender Restore-Test, und — sobald fachlich gewünscht — ein eigenes Arbeitspaket für die echte Produktivumgebung (`verevia-prod`).
