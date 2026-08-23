@@ -1,21 +1,55 @@
+import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { prisma } from "./client";
 
 /**
- * Tenant-partitioned models (must match the RLS-enabled tables in
- * prisma/migrations/20260817150231_add_rls_and_scope_constraint).
- * `User`/`Session`/`Account`/`Verification`/`PlatformRoleAssignment` are
- * intentionally excluded — they are the global identity layer, see
- * docs/ARCHITEKTUR_FINALISIERUNG.md, section 8.
+ * Models deliberately excluded from tenant-scoping despite carrying a
+ * `tenantId` field (see TENANT_SCOPED_MODELS below for why "carries
+ * tenantId" is otherwise the sole criterion). Keep this list as short as
+ * possible — every entry needs the same kind of justification `Tenant`
+ * and `AccountInvitation` already have in schema.prisma.
+ *
+ * - `AccountInvitation`: bootstrap lookup problem (the public accept/
+ *   lookup flow doesn't know the tenant yet — that's what it's
+ *   discovering FROM the token), no RLS policy exists for this table at
+ *   all, see its schema.prisma doc comment. Wrapping it here would just
+ *   set a GUC that no policy reads.
  */
-const TENANT_SCOPED_MODELS = new Set([
-  "Department",
-  "Team",
-  "Person",
-  "RoleAssignment",
-  "PersonRelationship",
-  "TeamMember",
-]);
+const TENANT_SCOPE_EXCLUSIONS = new Set(["AccountInvitation"]);
+
+/**
+ * Tenant-partitioned models — auto-derived from the Prisma schema itself
+ * (every model with a `tenantId` field, minus TENANT_SCOPE_EXCLUSIONS)
+ * rather than a hand-maintained list.
+ *
+ * This replaces an earlier hand-maintained `Set` literal that had to be
+ * remembered and updated by hand for every new tenant-scoped model —
+ * flagged explicitly as recurring technical debt going into Phase 9
+ * ("Nach Phase-4-Bug prüfen, ob neue Prisma-Modelle automatisch bzw.
+ * korrekt in der Tenant-Scope-Logik registriert werden"). The old
+ * design's failure mode was fail-OPEN: forgetting to add a new
+ * tenant-scoped model to the list silently ran it WITHOUT RLS context,
+ * a real security bug that would only surface as leaked cross-tenant
+ * rows, not a loud error. This derivation instead makes correctness a
+ * structural property of "does this model have a `tenantId` column",
+ * which every tenant-scoped model needs anyway for its composite FKs —
+ * there is no separate list to forget to update. `User`/`Session`/
+ * `Account`/`Verification`/`PlatformRoleAssignment`/`Tenant`/`Membership`
+ * are correctly excluded automatically (none of them has a `tenantId`
+ * field) — see docs/ARCHITEKTUR_FINALISIERUNG.md, section 8, for why
+ * those are the global identity layer.
+ *
+ * Verified against `prisma/migrations/20260817150231_add_rls_and_scope_constraint`
+ * and every later RLS-adding migration in `packages/database/src/__tests__/`
+ * (a dedicated test asserts this derived set matches the DB tables that
+ * actually have RLS enabled — see tenant-scoped-models.spec.ts).
+ */
+const TENANT_SCOPED_MODELS = new Set(
+  Prisma.dmmf.datamodel.models
+    .filter((model) => model.fields.some((field) => field.name === "tenantId"))
+    .map((model) => model.name)
+    .filter((name) => !TENANT_SCOPE_EXCLUSIONS.has(name)),
+);
 
 type ModelDelegate = Record<string, (args: unknown) => unknown>;
 

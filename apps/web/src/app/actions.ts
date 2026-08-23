@@ -150,6 +150,33 @@ export async function revokeInvitationAction(personId: string, invitationId: str
   revalidatePath("/personen");
 }
 
+export async function createSeasonAction(departmentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const name = String(formData.get("name") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  await apiFetch("/api/v1/seasons", tenantId, {
+    method: "POST",
+    body: JSON.stringify({ departmentId, name, startsAt, endsAt }),
+  });
+  revalidatePath("/fussball/saisons");
+  revalidatePath("/fussball");
+}
+
+export async function updateSeasonAction(seasonId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const name = String(formData.get("name") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  const status = String(formData.get("status") ?? "");
+  await apiFetch(`/api/v1/seasons/${seasonId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({ name, startsAt, endsAt, status }),
+  });
+  revalidatePath("/fussball/saisons");
+  revalidatePath("/fussball");
+}
+
 export async function createRelationshipAction(personId: string, formData: FormData) {
   const tenantId = await requireTenantId();
   const toPersonId = String(formData.get("toPersonId") ?? "");

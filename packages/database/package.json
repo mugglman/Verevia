@@ -11,7 +11,7 @@
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
-    "test": "echo \"unit tests: none yet; RLS integration tests require a real PostgreSQL instance, see pnpm test:integration\"",
+    "test": "prisma generate && vitest run",
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

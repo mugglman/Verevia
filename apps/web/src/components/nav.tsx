@@ -3,12 +3,13 @@ import Link from "next/link";
 /**
  * Minimal navigation for this vertical slice only — Verein (Abteilungen)
  * as the entry point (teams reached by drilling down through a
- * department), Personen (Phase 4), and Meine Kinder (Phase 6, guardian
- * ReBAC access). All links are always shown; each page itself enforces
- * its own access rule (403/empty-state message) rather than hiding the
- * link, since Nav has no access to the caller's permissions. No nav items
- * for features that don't exist yet (Turniere, Kalender, Anwesenheit,
- * Chat, Finanzen, Tennis, Stockschützen, Radsport).
+ * department), Personen (Phase 4), Meine Kinder (Phase 6, guardian
+ * ReBAC access), and Fußball (Phase 9, season foundation). All links are
+ * always shown; each page itself enforces its own access rule
+ * (403/empty-state message) rather than hiding the link, since Nav has no
+ * access to the caller's permissions. No nav items for features that
+ * don't exist yet (Turniere, Kalender, Anwesenheit, Chat, Finanzen,
+ * Tennis, Stockschützen, Radsport).
  */
 export function Nav() {
   return (
@@ -37,6 +38,12 @@ export function Nav() {
           className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
         >
           Meine Kinder
+        </Link>
+        <Link
+          href="/fussball"
+          className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
+        >
+          Fußball
         </Link>
       </div>
     </nav>

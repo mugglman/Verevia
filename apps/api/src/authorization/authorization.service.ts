@@ -221,4 +221,67 @@ export class AuthorizationService {
     if (callerPersonId === targetPersonId) return true;
     return this.getGuardianChildPersonIds(callerRelationships).includes(targetPersonId);
   }
+
+  /**
+   * Season is department-scoped (Phase 9, section 16) — deliberately NOT
+   * a plain reuse of `canOnDepartment`: that method's `create` is
+   * TENANT_ADMIN-only because creating a DEPARTMENT itself is
+   * TENANT_ADMIN-only, but a DEPARTMENT_ADMIN of that department is
+   * explicitly allowed to create/update SEASONS within their own
+   * department (a child resource, not the department itself) — see the
+   * work order, section 15. Read follows the same department-scope
+   * cascade as `canOnDepartment` (department-scoped role in that
+   * department, or a team-scoped role whose team belongs to it — derives
+   * "own department" for e.g. COACH).
+   */
+  canOnSeason(
+    roleAssignments: AuthorizationRoleAssignment[],
+    action: Action,
+    departmentId?: string,
+  ): boolean {
+    if (this.isTenantAdmin(roleAssignments)) return true;
+    if (!departmentId) return false;
+
+    if (action === "create" || action === "update") {
+      return this.isDepartmentAdminOf(roleAssignments, departmentId);
+    }
+
+    // read
+    return roleAssignments.some(
+      (ra) =>
+        (ra.scopeType === "DEPARTMENT" && ra.departmentId === departmentId) ||
+        (ra.scopeType === "TEAM" && ra.team?.departmentId === departmentId),
+    );
+  }
+
+  /**
+   * TeamSeason authorization is deliberately a direct reuse of
+   * `canOnTeam` (not a new method) — a TeamSeason is a season-specific
+   * attachment to an existing Team, and the desired rule set is
+   * identical: TENANT_ADMIN always; DEPARTMENT_ADMIN of the team's
+   * department may create/update; a TEAM-scoped role (e.g. COACH) may
+   * read their own team's TeamSeason but not another team's (Phase 9,
+   * section 15/16 — "COACH E1 darf keine TeamSeason E2 bearbeiten"). See
+   * call sites in TeamSeasonsService.
+   */
+
+  /**
+   * AgeGroup is tenant-wide reference data (Phase 9, section 15 lists it
+   * only under TENANT_ADMIN — "Altersklassen verwalten" — unlike Season/
+   * TeamSeason there is no DEPARTMENT_ADMIN carve-out, since an AgeGroup
+   * isn't owned by any one department).
+   */
+  canManageAgeGroups(roleAssignments: AuthorizationRoleAssignment[]): boolean {
+    return this.isTenantAdmin(roleAssignments);
+  }
+
+  /**
+   * Reading AgeGroups (reference/lookup data, not sensitive) follows the
+   * same "any active RoleAssignment implies read access" rule as
+   * `canOnClub` — every tenant member needs to be able to look them up
+   * (e.g. to render a TeamSeason's age group label).
+   */
+  canReadAgeGroups(roleAssignments: AuthorizationRoleAssignment[]): boolean {
+    return roleAssignments.length > 0;
+  }
 }

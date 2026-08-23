@@ -11,12 +11,14 @@ test("Vereinsmitglied navigiert von Verein über Abteilung zur Mannschaft", asyn
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "TSV Benediktbeuern" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Fußball" }).click();
+  // Scoped to <main> — the top nav also has a "Fußball" link (Phase 9,
+  // /fussball) since the seeded department is also named "Fußball".
+  await page.locator("main").getByRole("link", { name: "Fußball" }).click();
   await expect(page.getByRole("heading", { name: "Fußball" })).toBeVisible();
   await expect(page.getByRole("link", { name: "E1" })).toBeVisible();
   await expect(page.getByRole("link", { name: "E2" })).toBeVisible();
 
   await page.getByRole("link", { name: "E1" }).click();
   await expect(page.getByRole("heading", { name: "E1" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Fußball" })).toBeVisible();
+  await expect(page.locator("main").getByRole("link", { name: "Fußball" })).toBeVisible();
 });

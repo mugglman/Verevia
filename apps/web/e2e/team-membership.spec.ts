@@ -13,7 +13,9 @@ test("TENANT_ADMIN fügt eine Person zur Mannschaft E1 hinzu", async ({ page }) 
   ) as { fullName: string };
 
   await page.goto("/");
-  await page.getByRole("link", { name: "Fußball" }).click();
+  // Scoped to <main> — the top nav also has a "Fußball" link (Phase 9,
+  // /fussball) since the seeded department is also named "Fußball".
+  await page.locator("main").getByRole("link", { name: "Fußball" }).click();
   await page.getByRole("link", { name: "E1" }).click();
   await expect(page.getByRole("heading", { name: "E1" })).toBeVisible();
 
@@ -33,7 +35,7 @@ test.describe("COACH E1", () => {
 
   test("sieht Mitglieder von E1, aber keine Personenverwaltung", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: "Fußball" }).click();
+    await page.locator("main").getByRole("link", { name: "Fußball" }).click();
     await page.getByRole("link", { name: "E1" }).click();
     await expect(page.getByRole("heading", { name: "E1" })).toBeVisible();
     await expect(page.getByText("Max Mustermann")).toBeVisible();
