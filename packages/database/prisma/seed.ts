@@ -12,7 +12,11 @@ import { prisma, getTenantPrisma } from "../src/index";
  * fictional person, Petra Beispiel, is TENANT_ADMIN (Vereinsadministrator)
  * with no team assignment — and in Phase 6 (section 30) with a fourth
  * fictional person, Anna Mustermann, administratively verified as
- * LEGAL_GUARDIAN of Max Mustermann (demonstrates the guardian ReBAC path).
+ * LEGAL_GUARDIAN of Max Mustermann (demonstrates the guardian ReBAC path),
+ * and in Phase 9 (section 19) with the football season foundation: the
+ * Fußball department is marked `sportType: "FOOTBALL"`, an ACTIVE Season
+ * "2026/2027", an AgeGroup "E-Jugend", and TeamSeason assignments linking
+ * E1/E2 to that season and age group.
  *
  * Deliberately contains NO real personal data — the demo persons use
  * obviously fictional, clearly-placeholder German names ("Max Mustermann" /
@@ -39,8 +43,8 @@ async function main() {
 
   const department = await db.department.upsert({
     where: { tenantId_name: { tenantId: tenant.id, name: "Fußball" } },
-    update: {},
-    create: { tenantId: tenant.id, name: "Fußball" },
+    update: { sportType: "FOOTBALL" },
+    create: { tenantId: tenant.id, name: "Fußball", sportType: "FOOTBALL" },
   });
 
   const demoTeamNames = ["E1", "E2"];
@@ -52,6 +56,46 @@ async function main() {
       create: { tenantId: tenant.id, departmentId: department.id, name: teamName },
     });
     teamsByName.set(teamName, team);
+  }
+
+  // Phase 9, section 19: football season foundation — an ACTIVE Season
+  // "2026/2027" for the Fußball department, an AgeGroup "E-Jugend", and
+  // TeamSeason assignments for both demo teams (E1/E2). Idempotent, like
+  // everything above.
+  const season = await db.season.upsert({
+    where: { departmentId_name: { departmentId: department.id, name: "2026/2027" } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      departmentId: department.id,
+      name: "2026/2027",
+      startsAt: new Date("2026-08-01"),
+      endsAt: new Date("2027-06-30"),
+      status: "ACTIVE",
+    },
+  });
+
+  const ageGroup = await db.ageGroup.upsert({
+    where: { tenantId_name: { tenantId: tenant.id, name: "E-Jugend" } },
+    update: {},
+    create: { tenantId: tenant.id, name: "E-Jugend", sortOrder: 1 },
+  });
+
+  for (const teamName of demoTeamNames) {
+    const team = teamsByName.get(teamName)!;
+    const existingTeamSeason = await db.teamSeason.findFirst({
+      where: { tenantId: tenant.id, teamId: team.id, seasonId: season.id },
+    });
+    if (!existingTeamSeason) {
+      await db.teamSeason.create({
+        data: {
+          tenantId: tenant.id,
+          teamId: team.id,
+          seasonId: season.id,
+          ageGroupId: ageGroup.id,
+        },
+      });
+    }
   }
 
   const demoPersons = [
@@ -170,6 +214,8 @@ async function main() {
     `Seeded role assignments: Max Mustermann as Trainer (E1), Petra Beispiel as Vereinsadministrator.`,
   );
   console.log(`Seeded relationship: Anna Mustermann as Erziehungsberechtigte of Max Mustermann.`);
+  console.log(`Seeded season "${season.name}" (${season.status}) and age group "${ageGroup.name}".`);
+  console.log(`Seeded team season assignments for: ${demoTeamNames.join(", ")}`);
 }
 
 main()

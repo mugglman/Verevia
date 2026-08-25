@@ -6,9 +6,11 @@
 //   - docs/ARCHITEKTUR_FINALISIERUNG.md (finales RoleAssignment-Modell, RLS-Konzept)
 //   - docs/architecture/adr/0002-0006 (ACCEPTED)
 //
-// Noch NICHT enthalten: Season/Event/Attendance/Task/Tournament/Match/Venue/
+// Noch NICHT enthalten: Event/Attendance/Task/Tournament/Match/Venue/
 // Notification/AuditLog/JointTeam — folgen in einem eigenen, fachlichen
-// Arbeitspaket. Prisma ist absichtlich auf ^6.x gepinnt (nicht 7), siehe
+// Arbeitspaket. Season/AgeGroup/TeamSeason (Fußball-Saisonverwaltung)
+// kamen in Phase 9 hinzu, siehe docs/PHASE_9_FOOTBALL_SEASON_REPORT.md.
+// Prisma ist absichtlich auf ^6.x gepinnt (nicht 7), siehe
 // docs/architecture/adr/0002-authentication-strategy.md.
 //
 // RLS-Hinweis: Row-Level-Security wird NICHT deklarativ über Prisma
@@ -91,6 +93,41 @@ enum RelationshipStatus {
 /// weitergehende Historisierung (kein validFrom/validUntil, kein Audit-Log)
 /// in dieser Phase, siehe TeamMember-Kommentar.
 enum TeamMemberStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Grobe Sportart-Klassifizierung einer `Department` (Phase 9). Bewusst ein
+/// Enum statt einer konfigurierbaren Entity — siehe Abschnitt "Sportart" in
+/// docs/PHASE_9_FOOTBALL_SEASON_REPORT.md: die Liste der Sportarten eines
+/// typischen deutschen Mehrsparten-Vereins ist klein und ändert sich
+/// selten; eine eigene verwaltbare Entity (mit CRUD/Seed/Admin-UI) wäre für
+/// diesen Zweck unnötige Komplexität. Erweiterbar durch simples Hinzufügen
+/// eines neuen Werts, keine Migration bestehender Daten nötig. `OTHER` ist
+/// der bewusste Auffangwert für alles, was (noch) keinen eigenen Wert hat —
+/// keine erschöpfende Sportarten-Liste, siehe Auftrag ("keinen riesigen
+/// Sportarten-Katalog implementieren").
+enum SportType {
+  FOOTBALL
+  TENNIS
+  STOCK_SPORT
+  CYCLING
+  OTHER
+}
+
+/// Lebenszyklus einer `Season`. Bewusst nur drei Zustände, keine
+/// weitergehende Workflow-Engine (analog zu `TeamMemberStatus`/
+/// `AccountInvitationStatus`).
+enum SeasonStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+
+/// Lebenszyklus einer `TeamSeason`-Zuordnung — identisches Muster zu
+/// `TeamMemberStatus` (siehe dort): eine Mannschaft kann sich aus einer
+/// Saison zurückziehen, ohne dass die Zeile gelöscht wird.
+enum TeamSeasonStatus {
   ACTIVE
   INACTIVE
 }
@@ -223,20 +260,31 @@ model Tenant {
   teams               Team[]
   teamMembers         TeamMember[]
   accountInvitations  AccountInvitation[]
+  seasons             Season[]
+  ageGroups           AgeGroup[]
+  teamSeasons         TeamSeason[]
 
   @@map("tenant")
 }
 
 model Department {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  /// Phase 9: grobe Sportart-Klassifizierung — bewusst KEIN
+  /// fußballspezifisches Feld (siehe Auftrag: "Department und Team bleiben
+  /// generisch"), sondern derselbe generische Klassifizierer, den jede
+  /// andere Abteilung auch trägt (Tennis, Radsport, …). Ausschließlich
+  /// dieses Feld entscheidet, ob eine `Team` dieser Department eine
+  /// `TeamSeason` erhalten darf — siehe TeamSeason-Kommentar.
+  sportType SportType @default(OTHER)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   teams           Team[]
   roleAssignments RoleAssignment[]
+  seasons         Season[]
 
   @@unique([tenantId, name])
   // Composite-Unique (zusätzlich zum bereits eindeutigen `id`), damit
@@ -265,6 +313,7 @@ model Team {
 
   roleAssignments RoleAssignment[]
   teamMembers     TeamMember[]
+  teamSeasons     TeamSeason[]
 
   @@unique([departmentId, name])
   @@unique([tenantId, id])
@@ -551,4 +600,120 @@ model AccountInvitation {
   @@index([personId])
   @@index([email])
   @@map("account_invitation")
+}
+
+/// Saison einer Abteilung (Phase 9) — bewusst sportartenübergreifend
+/// generisch modelliert (kein Teil eines "Football-Moduls"), da Saisons
+/// fachlich für jede Abteilung sinnvoll sind (eine Tennis-Saison ist
+/// genauso denkbar wie eine Fußball-Saison) — siehe
+/// docs/PHASE_9_FOOTBALL_SEASON_REPORT.md, Abschnitt "Season-Modell".
+///
+/// Höchstens eine ACTIVE Season pro Department gleichzeitig — partieller
+/// Unique-Index in der Migration (gleiches Muster wie TeamMember/
+/// AccountInvitation, siehe dort: Prisma 6 bildet WHERE-Klauseln in
+/// `@@unique` nicht deklarativ ab). `startsAt < endsAt` wird per
+/// CHECK-Constraint in derselben Migration erzwungen. Überschneidende
+/// Zeiträume zwischen PLANNED/ACTIVE/COMPLETED Saisons werden bewusst
+/// NICHT verboten (siehe Auftrag: legitime Übergänge, z. B. Vorbereitung
+/// der nächsten Saison während die aktuelle noch läuft).
+model Season {
+  id           String       @id @default(uuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  departmentId String
+  // Composite FK (tenantId, departmentId) → department(tenantId, id),
+  // gleiches Muster wie Team → Department (siehe dort).
+  department   Department   @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
+  name         String
+  startsAt     DateTime
+  endsAt       DateTime
+  status       SeasonStatus @default(PLANNED)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  teamSeasons TeamSeason[]
+
+  @@unique([departmentId, name])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([departmentId])
+  @@map("season")
+}
+
+/// Konfigurierbare Altersklasse (Phase 9) — bewusst eine Entity statt
+/// eines Enums mit hartcodierten deutschen Jugendklassen (G-/F-/E-/D-/C-/
+/// B-/A-Jugend), siehe docs/PHASE_9_FOOTBALL_SEASON_REPORT.md, Abschnitt
+/// "Altersklassen": ein Enum würde die Plattform dauerhaft an ein
+/// deutsches Jugendfußball-Schema binden und spätere andere Verbände,
+/// Länder oder reine Erwachsenenkategorien erschweren. Tenant-weit statt
+/// department-gebunden modelliert — eine Altersklasse wie "Herren" ist
+/// grundsätzlich nicht zwangsläufig fußballspezifisch, auch wenn sie
+/// aktuell ausschließlich über TeamSeason (Fußball) verwendet wird.
+/// Noch kein DELETE-Endpoint, solange Verwendungs-/Archivierungsregeln
+/// nicht geklärt sind (siehe Auftrag).
+model AgeGroup {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teamSeasons TeamSeason[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("age_group")
+}
+
+/// Saisonale Zuordnung eines bestehenden `Team` zu einer `Season` +
+/// `AgeGroup` (Phase 9). Das `Team` selbst bleibt die dauerhafte
+/// organisatorische Identität über Saisons hinweg — ein real existierender
+/// Verein führt eine Kaderbezeichnung wie "E1" typischerweise über Jahre
+/// fort, auch wenn sich Altersklasse und Spieler von Saison zu Saison
+/// ändern (die Spieler "wachsen durch" die Altersklassen, der
+/// Mannschafts-Slot "E1" bleibt bestehen). Ein alternatives Modell (jede
+/// Saison ein komplett neues `Team`) wurde bewusst verworfen: es würde
+/// RoleAssignments/TeamMember/Rollenverlauf pro Saison neu verknüpfen
+/// müssen, ohne einen fachlichen Vorteil zu bieten — siehe
+/// docs/PHASE_9_FOOTBALL_SEASON_REPORT.md, Abschnitt "Team vs.
+/// TeamSeason" für die ausführliche Begründung.
+///
+/// `team.name` bleibt die dauerhafte organisatorische Bezeichnung;
+/// `displayName` ist eine optionale, rein saisonale Anzeige-Überschreibung
+/// (z. B. falls ein Verein "E1" in einer Saison anders benennen möchte),
+/// keine Datenverdopplung im Regelfall (NULL, wenn ungenutzt).
+///
+/// Bewusst NICHT auf Datenbankebene erzwungen, dass `team.department`
+/// tatsächlich `sportType = FOOTBALL` ist — dafür wäre ein Trigger nötig,
+/// der beim Schreiben von `team_season` die `department`-Tabelle über
+/// `team` hinweg nachschlägt, was in reinem SQL/Postgres-Constraints ohne
+/// eigene Trigger-Funktion nicht ausdrückbar ist. Für den aktuellen Umfang
+/// unverhältnismäßige Komplexität (siehe Auftrag: "sofern DB-seitig
+/// sinnvoll möglich"). Stattdessen anwendungsseitig in
+/// `TeamSeasonsService.create()` geprüft (klare Fehlermeldung statt
+/// stillem Fehlverhalten) und durch einen dedizierten Test abgesichert.
+model TeamSeason {
+  id          String           @id @default(uuid())
+  tenantId    String
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teamId      String
+  team        Team             @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Restrict)
+  seasonId    String
+  season      Season           @relation(fields: [tenantId, seasonId], references: [tenantId, id], onDelete: Restrict)
+  ageGroupId  String
+  ageGroup    AgeGroup         @relation(fields: [tenantId, ageGroupId], references: [tenantId, id], onDelete: Restrict)
+  displayName String?
+  status      TeamSeasonStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([teamId, seasonId])
+  @@index([tenantId])
+  @@index([teamId])
+  @@index([seasonId])
+  @@index([ageGroupId])
+  @@map("team_season")
 }

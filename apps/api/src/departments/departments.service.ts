@@ -4,7 +4,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { getTenantContext, getTenantPrisma } from "@verevia/database";
+import { getTenantContext, getTenantPrisma, SportType } from "@verevia/database";
 import { AuthorizationService } from "../authorization/authorization.service";
 import { PersonRoleAssignmentsService } from "../authorization/person-role-assignments.service";
 import { CreateDepartmentDto } from "./dto/create-department.dto";
@@ -13,6 +13,7 @@ import { UpdateDepartmentDto } from "./dto/update-department.dto";
 export interface DepartmentListItemDto {
   id: string;
   name: string;
+  sportType: SportType;
   canEdit: boolean;
 }
 
@@ -50,6 +51,7 @@ export class DepartmentsService {
       .map((d) => ({
         id: d.id,
         name: d.name,
+        sportType: d.sportType,
         canEdit: this.authz.canOnDepartment(assignments, "update", d.id),
       }));
     return { items, canCreate: this.authz.canOnDepartment(assignments, "create") };
@@ -69,6 +71,7 @@ export class DepartmentsService {
     return {
       id: department.id,
       name: department.name,
+      sportType: department.sportType,
       canEdit: this.authz.canOnDepartment(assignments, "update", id),
       canCreateTeams: this.authz.canOnTeam(assignments, "create", { departmentId: id }),
     };
@@ -84,7 +87,13 @@ export class DepartmentsService {
     const department = await db.department.create({
       data: { tenantId: context.tenantId, name: dto.name },
     });
-    return { id: department.id, name: department.name, canEdit: true, canCreateTeams: true };
+    return {
+      id: department.id,
+      name: department.name,
+      sportType: department.sportType,
+      canEdit: true,
+      canCreateTeams: true,
+    };
   }
 
   async update(id: string, dto: UpdateDepartmentDto): Promise<DepartmentDetailDto> {
@@ -102,6 +111,7 @@ export class DepartmentsService {
     return {
       id: department.id,
       name: department.name,
+      sportType: department.sportType,
       canEdit: true,
       canCreateTeams: this.authz.canOnTeam(assignments, "create", { departmentId: id }),
     };
