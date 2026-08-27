@@ -42,6 +42,9 @@ export function ClubOverview({ club, departments, canCreateDepartment }: ClubOve
             </button>
           </form>
         )}
+        <Link href="/spielstaetten" className="inline-block text-sm font-medium text-[var(--color-primary)] hover:underline">
+          Spielstätten
+        </Link>
       </section>
 
       <section className="space-y-3">

@@ -6,10 +6,12 @@
 //   - docs/ARCHITEKTUR_FINALISIERUNG.md (finales RoleAssignment-Modell, RLS-Konzept)
 //   - docs/architecture/adr/0002-0006 (ACCEPTED)
 //
-// Noch NICHT enthalten: Event/Attendance/Task/Tournament/Match/Venue/
+// Noch NICHT enthalten: Event/Attendance/Task/Tournament/
 // Notification/AuditLog/JointTeam — folgen in einem eigenen, fachlichen
 // Arbeitspaket. Season/AgeGroup/TeamSeason (Fußball-Saisonverwaltung)
 // kamen in Phase 9 hinzu, siehe docs/PHASE_9_FOOTBALL_SEASON_REPORT.md.
+// Venue/FootballMatch (Spielstätten- und Spielgrundmodell) kamen in
+// Phase 10 hinzu, siehe docs/PHASE_10_MATCH_FOUNDATION_REPORT.md.
 // Prisma ist absichtlich auf ^6.x gepinnt (nicht 7), siehe
 // docs/architecture/adr/0002-authentication-strategy.md.
 //
@@ -130,6 +132,47 @@ enum SeasonStatus {
 enum TeamSeasonStatus {
   ACTIVE
   INACTIVE
+}
+
+/// Lebenszyklus einer `Venue` (Phase 10) — identisches, bewusst schlankes
+/// Zwei-Zustands-Muster wie `TeamMemberStatus`/`TeamSeasonStatus`: eine
+/// Spielstätte kann außer Nutzung genommen werden (z. B. Bauarbeiten,
+/// dauerhaft geschlossen), ohne die Zeile zu löschen (an ihr hängen
+/// FootballMatch-Referenzen).
+enum VenueStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Art eines Spiels (Phase 10). `CUP` bewusst mit aufgenommen (nicht nur
+/// LEAGUE/FRIENDLY/TOURNAMENT) — Pokalspiele sind im deutschen
+/// Amateurfußball fachlich üblich und die Ergänzung kostet an dieser
+/// Stelle nichts (ein weiterer Enum-Wert, keine zusätzliche Logik). Noch
+/// KEINE eigene Competition-/Liga-Entity — siehe
+/// docs/PHASE_10_MATCH_FOUNDATION_REPORT.md.
+enum MatchType {
+  LEAGUE
+  FRIENDLY
+  TOURNAMENT
+  CUP
+}
+
+/// Bewusst ein Enum mit drei Werten statt eines booleschen `isHome` —
+/// Turniere/Pokalspiele können auf neutralem Platz stattfinden, das lässt
+/// sich mit einem Bool nicht sauber abbilden (siehe Auftrag).
+enum MatchHomeAway {
+  HOME
+  AWAY
+  NEUTRAL
+}
+
+/// Schlanker Lebenszyklus eines Spiels (Phase 10) — bewusst noch kein
+/// Live-Spielstatus (z. B. "1. Halbzeit"), keine Workflow-Engine.
+enum MatchStatus {
+  SCHEDULED
+  POSTPONED
+  CANCELLED
+  COMPLETED
 }
 
 /// Lebenszyklus einer AccountInvitation. Bewusst nur vier Zustände, keine
@@ -263,6 +306,8 @@ model Tenant {
   seasons             Season[]
   ageGroups           AgeGroup[]
   teamSeasons         TeamSeason[]
+  venues              Venue[]
+  footballMatches     FootballMatch[]
 
   @@map("tenant")
 }
@@ -710,10 +755,147 @@ model TeamSeason {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
+  footballMatches FootballMatch[]
+
   @@unique([teamId, seasonId])
+  // Ergänzt in Phase 10: Composite-Unique-Ziel für FootballMatch.teamSeasonId
+  // (gleiches Muster wie bei Department/Team/Season/AgeGroup oben) — ohne
+  // dieses Zusatz-Unique kann FootballMatch nicht per Composite-FK
+  // (tenantId, teamSeasonId) → team_season(tenantId, id) referenzieren.
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@index([teamId])
   @@index([seasonId])
   @@index([ageGroupId])
   @@map("team_season")
+}
+
+/// Spielstätte (Phase 10) — bewusst sportartenübergreifend und NICHT an
+/// eine Fußball-Abteilung gekoppelt (siehe Auftrag: "Venue soll
+/// sportartenübergreifend verwendbar sein"), tenant-gebundenes
+/// Stammdatenmodell analog zu `AgeGroup`. Keine Google-Maps-/Geocoding-
+/// Abhängigkeit — `latitude`/`longitude` sind rein optionale, manuell
+/// gepflegte Koordinatenfelder ohne Validierung gegen einen externen
+/// Dienst.
+///
+/// Modellierungsentscheidung "Venue vs. Venue+Pitch/Court" (Auftrag
+/// Abschnitt 7): für den MVP ist jede konkrete Spielfläche ein eigener
+/// `Venue`-Datensatz (Option A) — z. B. "Sportzentrum Benediktbeuern —
+/// Hauptplatz" und "Sportzentrum Benediktbeuern — Nebenplatz" als zwei
+/// separate Zeilen mit ähnlichem `name`-Präfix, statt einer eigenen
+/// Pitch/Court-Unterstruktur. Begründung: die zusätzliche Hierarchieebene
+/// (Standort → mehrere Plätze) hat für den aktuellen Funktionsumfang
+/// keinen fachlichen Mehrwert (nichts referenziert "den Standort als
+/// Ganzes", nur konkrete Spielflächen), und eine spätere Erweiterung
+/// bleibt ohne Breaking Change möglich: ein optionales, selbstreferenzierendes
+/// `parentVenueId`-Feld (oder alternativ eine eigene `Pitch`-Entity, die
+/// auf `Venue` als "Standort" zeigt) ließe sich additiv ergänzen, ohne
+/// bestehende `Venue`-Zeilen oder `FootballMatch.venueId`-Referenzen zu
+/// brechen.
+model Venue {
+  id          String      @id @default(uuid())
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name        String
+  street      String?
+  postalCode  String?
+  city        String?
+  countryCode String?
+  latitude    Float?
+  longitude   Float?
+  notes       String?
+  status      VenueStatus @default(ACTIVE)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  footballMatches FootballMatch[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("venue")
+}
+
+/// Spielgrundmodell (Phase 10) — Namensentscheidung `FootballMatch` (nicht
+/// sportartenübergreifend generisch `Match`/`Game`/`Fixture`): die
+/// fachlichen Unterschiede zwischen Sportarten (z. B. Ergebnisdarstellung:
+/// Tore vs. Sätze, Unentschieden möglich oder nicht) sind aktuell zu groß/
+/// unklar für ein tragfähiges gemeinsames Basismodell — ein verfrühtes
+/// universelles Modell würde entweder Football-Felder für Tennis/
+/// Stockschützen mitschleppen oder eine unnötig abstrakte
+/// Attribut-Bag-Struktur erzwingen. `FootballMatch` ist laut Auftrag
+/// "vollkommen akzeptabel", solange der spätere Turnierplaner UND der
+/// normale Fußball-Spielbetrieb dasselbe Modell verwenden — genau das ist
+/// hier sichergestellt: ein künftiges `TournamentMatch` referenziert
+/// perspektivisch denselben `FootballMatch`-Datensatz (oder eine
+/// Turnier-spezifische Zuordnung DARAUF), es entsteht kein paralleles
+/// zweites Spielmodell.
+///
+/// `Match` statt `Game`/`Fixture` als Namensbestandteil: "Match" ist
+/// international über Sportarten hinweg verständlich (Fußball, Tennis,
+/// Handball, …), technisch unbelastet in diesem Codebase, und
+/// unmissverständlicher als "Game" (zu generisch, keine Sport-Konnotation)
+/// oder "Fixture" (primär britisches Fußball-/Sportenglisch, im
+/// internationalen/deutschen Kontext weniger sofort verständlich).
+///
+/// KEIN redundantes `seasonId`-Feld (siehe Auftrag Abschnitt 19): die
+/// Saison ist über `teamSeasonId` → `TeamSeason.seasonId` bereits
+/// eindeutig ableitbar. Eine zusätzliche `seasonId`-Spalte hätte entweder
+/// eine eigene Konsistenzprüfung (Trigger, der bei jedem INSERT/UPDATE
+/// beide Werte gegeneinander abgleicht) oder ein stillschweigendes
+/// Inkonsistenzrisiko benötigt — ohne klaren fachlichen Vorteil gegenüber
+/// dem einfachen Join über `teamSeasonId`. API-Filter `?seasonId=` wird
+/// über eine Relations-Query auf `teamSeason.seasonId` umgesetzt (siehe
+/// `MatchesService`), nicht über eine eigene Spalte.
+///
+/// Fußball-only ist hier STRUKTURELL, nicht durch eine eigene Prüfung
+/// erzwungen: `teamSeasonId` referenziert ausschließlich `TeamSeason`-
+/// Zeilen, deren zugrundeliegendes `Team` bereits beim Anlegen der
+/// `TeamSeason` selbst auf `department.sportType = FOOTBALL` geprüft
+/// wurde (siehe `TeamSeasonsService.create()`, Phase 9) — ein
+/// `FootballMatch` kann also gar nicht auf eine Nicht-Fußball-Mannschaft
+/// zeigen, ohne dass hier ein zusätzlicher Guardrail nötig wäre.
+///
+/// Gegner-Modellierung (Auftrag Abschnitt 13): bewusst nur `opponentName`
+/// (Freitext) im MVP — der Gegner ist im Regelfall kein Verevia-Mandant
+/// und eine vollständige Club-/ExternalTeam-Datenbank ist ausdrücklich
+/// nicht Teil dieser Phase. Dokumentierter künftiger Erweiterungspunkt für
+/// den Turnierplaner: ein leichtes `Opponent`/`Participant`-Modell, das
+/// sowohl auf eine eigene `TeamSeason` (Spiel zwischen zwei eigenen
+/// Mannschaften) als auch auf einen externen, noch zu modellierenden
+/// Club/Team verweisen kann, würde `opponentName` perspektivisch als
+/// Fallback-Freitext ablösen bzw. ergänzen — nicht Teil von Phase 10.
+///
+/// Ergebnis: `homeScore`/`awayScore` bewusst bereits im Grundmodell (siehe
+/// Auftrag Abschnitt 17), aber ausdrücklich OHNE Statistiken/Torschützen/
+/// Karten/Aufstellungen. Ein CHECK-Constraint in der Migration erzwingt,
+/// dass beide Felder nur gesetzt sein dürfen, wenn `status = COMPLETED`
+/// ist (kein fragiler Trigger nötig — ein einfacher spaltenbasierter
+/// CHECK reicht).
+model FootballMatch {
+  id           String        @id @default(uuid())
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teamSeasonId String
+  // Composite FK (tenantId, teamSeasonId) → team_season(tenantId, id) —
+  // gleiches Cross-Tenant-Konsistenzmuster wie überall sonst im Schema.
+  teamSeason   TeamSeason    @relation(fields: [tenantId, teamSeasonId], references: [tenantId, id], onDelete: Restrict)
+  venueId      String?
+  venue        Venue?        @relation(fields: [tenantId, venueId], references: [tenantId, id], onDelete: Restrict)
+  startsAt     DateTime
+  type         MatchType
+  status       MatchStatus   @default(SCHEDULED)
+  homeAway     MatchHomeAway
+  opponentName String
+  homeScore    Int?
+  awayScore    Int?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([teamSeasonId])
+  @@index([venueId])
+  @@index([startsAt])
+  @@map("football_match")
 }

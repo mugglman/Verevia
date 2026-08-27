@@ -34,6 +34,30 @@ function coachOfTeam(teamId: string, departmentId: string): AuthorizationRoleAss
   ];
 }
 
+function teamManagerOfTeam(teamId: string, departmentId: string): AuthorizationRoleAssignment[] {
+  return [
+    {
+      role: "TEAM_MANAGER",
+      scopeType: "TEAM",
+      departmentId: null,
+      teamId,
+      team: { departmentId },
+    },
+  ];
+}
+
+function assistantCoachOfTeam(teamId: string, departmentId: string): AuthorizationRoleAssignment[] {
+  return [
+    {
+      role: "ASSISTANT_COACH",
+      scopeType: "TEAM",
+      departmentId: null,
+      teamId,
+      team: { departmentId },
+    },
+  ];
+}
+
 describe("AuthorizationService — Club", () => {
   it("any role can read the club", () => {
     expect(authz.canOnClub(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "read")).toBe(true);
@@ -338,6 +362,125 @@ describe("AuthorizationService — canAccessPersonAsSelfOrGuardian", () => {
 
   it("an unrelated person has no access", () => {
     expect(authz.canAccessPersonAsSelfOrGuardian("person-stranger", PERSON_CHILD, [])).toBe(
+      false,
+    );
+  });
+});
+
+describe("AuthorizationService — Venue", () => {
+  it("any role can read venues", () => {
+    expect(authz.canOnVenue(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "read")).toBe(true);
+  });
+
+  it("no role at all cannot read venues", () => {
+    expect(authz.canOnVenue([], "read")).toBe(false);
+  });
+
+  it("TENANT_ADMIN can create/update venues", () => {
+    expect(authz.canOnVenue(tenantAdmin(), "create")).toBe(true);
+    expect(authz.canOnVenue(tenantAdmin(), "update")).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN cannot create/update venues (tenant-wide shared resource)", () => {
+    expect(authz.canOnVenue(departmentAdmin(DEPT_FOOTBALL), "create")).toBe(false);
+    expect(authz.canOnVenue(departmentAdmin(DEPT_FOOTBALL), "update")).toBe(false);
+  });
+
+  it("COACH cannot create/update venues", () => {
+    expect(authz.canOnVenue(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "update")).toBe(false);
+  });
+});
+
+describe("AuthorizationService — Match", () => {
+  it("TENANT_ADMIN can create a match anywhere", () => {
+    expect(
+      authz.canOnMatch(tenantAdmin(), "create", { teamId: TEAM_E1, departmentId: DEPT_FOOTBALL }),
+    ).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN Fußball can create/update a Fußball match", () => {
+    expect(
+      authz.canOnMatch(departmentAdmin(DEPT_FOOTBALL), "create", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(true);
+  });
+
+  it("DEPARTMENT_ADMIN Fußball cannot create/update a Tennis match", () => {
+    expect(
+      authz.canOnMatch(departmentAdmin(DEPT_FOOTBALL), "create", {
+        teamId: "team-tennis-1",
+        departmentId: DEPT_TENNIS,
+      }),
+    ).toBe(false);
+  });
+
+  it("COACH E1 can create/update E1's own match", () => {
+    expect(
+      authz.canOnMatch(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "create", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(true);
+    expect(
+      authz.canOnMatch(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "update", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(true);
+  });
+
+  it("TEAM_MANAGER E1 can create/update E1's own match", () => {
+    expect(
+      authz.canOnMatch(teamManagerOfTeam(TEAM_E1, DEPT_FOOTBALL), "create", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(true);
+  });
+
+  it("COACH E1 cannot update E2's match", () => {
+    expect(
+      authz.canOnMatch(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "update", {
+        teamId: TEAM_E2,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(false);
+  });
+
+  it("COACH E1 can read E1's match", () => {
+    expect(
+      authz.canOnMatch(coachOfTeam(TEAM_E1, DEPT_FOOTBALL), "read", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(true);
+  });
+
+  it("ASSISTANT_COACH E1 can read but not create/update E1's match", () => {
+    expect(
+      authz.canOnMatch(assistantCoachOfTeam(TEAM_E1, DEPT_FOOTBALL), "read", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(true);
+    expect(
+      authz.canOnMatch(assistantCoachOfTeam(TEAM_E1, DEPT_FOOTBALL), "create", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(false);
+    expect(
+      authz.canOnMatch(assistantCoachOfTeam(TEAM_E1, DEPT_FOOTBALL), "update", {
+        teamId: TEAM_E1,
+        departmentId: DEPT_FOOTBALL,
+      }),
+    ).toBe(false);
+  });
+
+  it("no role at all cannot read or write a match", () => {
+    expect(authz.canOnMatch([], "read", { teamId: TEAM_E1, departmentId: DEPT_FOOTBALL })).toBe(
       false,
     );
   });
