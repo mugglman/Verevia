@@ -40,7 +40,9 @@ test("TENANT_ADMIN legt ein neues Spiel an und bearbeitet es", async ({ page }) 
   await page.getByLabel("Tore Auswärts").fill("1");
   await page.getByRole("button", { name: "Speichern" }).click();
 
-  await expect(page.getByText(/abgeschlossen/i).first()).toBeVisible();
+  // Scoped to the status badge — "Abgeschlossen" also appears as <option>
+  // text inside the status <select> of the edit form.
+  await expect(page.locator("span.rounded-full", { hasText: "Abgeschlossen" })).toBeVisible();
 });
 
 test.describe("COACH E1", () => {

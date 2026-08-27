@@ -58,21 +58,25 @@ export function MatchDetail({ match, venues }: MatchDetailProps) {
         </span>
       </nav>
 
-      <h1 className="text-2xl font-semibold text-[var(--color-dark)]">
-        {match.teamName} – {match.opponentName}
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold text-[var(--color-dark)]">
+          {match.teamName} – {match.opponentName}
+        </h1>
+        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+          {MATCH_STATUS_LABELS[match.status]}
+        </span>
+      </div>
+      {match.status === "COMPLETED" && match.homeScore != null && match.awayScore != null && (
+        <p className="text-sm text-neutral-600">
+          Ergebnis: {match.homeScore}:{match.awayScore}
+        </p>
+      )}
 
       {!match.canEdit ? (
         <div className="space-y-1 rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-600">
           <p>{MATCH_HOME_AWAY_LABELS[match.homeAway]}</p>
           <p>{match.venueName ?? "Keine Spielstätte angegeben"}</p>
           <p>{MATCH_TYPE_LABELS[match.type]}</p>
-          <p>{MATCH_STATUS_LABELS[match.status]}</p>
-          {match.status === "COMPLETED" && match.homeScore != null && match.awayScore != null && (
-            <p>
-              Ergebnis: {match.homeScore}:{match.awayScore}
-            </p>
-          )}
           {match.notes && <p>Notiz: {match.notes}</p>}
         </div>
       ) : (

@@ -41,7 +41,7 @@ describe("MatchDetail", () => {
     expect(screen.getByLabelText(/tore auswärts/i)).toBeInTheDocument();
   });
 
-  it("shows the result in the read-only view for a completed match", () => {
+  it("shows the result for a completed match", () => {
     render(
       <MatchDetail
         match={{ ...baseMatch, status: "COMPLETED", homeScore: 3, awayScore: 1 }}
@@ -49,5 +49,10 @@ describe("MatchDetail", () => {
       />,
     );
     expect(screen.getByText(/3:1/)).toBeInTheDocument();
+  });
+
+  it("shows the current status badge even while editing", () => {
+    render(<MatchDetail match={{ ...baseMatch, status: "COMPLETED", canEdit: true }} venues={venues} />);
+    expect(screen.getAllByText("Abgeschlossen").length).toBeGreaterThan(0);
   });
 });

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import type { RoleName } from "@/lib/roles";
 import { ROLE_SCOPE } from "@/lib/roles";
@@ -218,6 +219,11 @@ export async function createMatchAction(formData: FormData) {
     }),
   });
   revalidatePath("/fussball/spiele");
+  // Unlike every other create action in this file, the match-creation form
+  // lives on its own dedicated page (/fussball/spiele/neu, not inline on
+  // the list) — without an explicit redirect the user would stay on the
+  // now-stale "neu" page after submission instead of seeing the new match.
+  redirect("/fussball/spiele");
 }
 
 export async function updateMatchAction(matchId: string, formData: FormData) {
