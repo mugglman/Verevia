@@ -16,7 +16,10 @@ import { prisma, getTenantPrisma } from "../src/index";
  * and in Phase 9 (section 19) with the football season foundation: the
  * Fußball department is marked `sportType: "FOOTBALL"`, an ACTIVE Season
  * "2026/2027", an AgeGroup "E-Jugend", and TeamSeason assignments linking
- * E1/E2 to that season and age group.
+ * E1/E2 to that season and age group, and in Phase 10 (section 35/36) with
+ * a demo Venue ("Sportplatz Benediktbeuern", no real address) and three
+ * fictional demo matches (two upcoming friendlies, one completed league
+ * match with a result).
  *
  * Deliberately contains NO real personal data — the demo persons use
  * obviously fictional, clearly-placeholder German names ("Max Mustermann" /
@@ -81,13 +84,14 @@ async function main() {
     create: { tenantId: tenant.id, name: "E-Jugend", sortOrder: 1 },
   });
 
+  const teamSeasonsByTeamName = new Map<string, { id: string }>();
   for (const teamName of demoTeamNames) {
     const team = teamsByName.get(teamName)!;
-    const existingTeamSeason = await db.teamSeason.findFirst({
+    let teamSeason = await db.teamSeason.findFirst({
       where: { tenantId: tenant.id, teamId: team.id, seasonId: season.id },
     });
-    if (!existingTeamSeason) {
-      await db.teamSeason.create({
+    if (!teamSeason) {
+      teamSeason = await db.teamSeason.create({
         data: {
           tenantId: tenant.id,
           teamId: team.id,
@@ -96,6 +100,7 @@ async function main() {
         },
       });
     }
+    teamSeasonsByTeamName.set(teamName, teamSeason);
   }
 
   const demoPersons = [
@@ -204,6 +209,77 @@ async function main() {
     });
   }
 
+  // Phase 10, section 35/36: a demo Venue and demo FootballMatches — purely
+  // fictional (no real address, generic fictional opponent names). Two
+  // upcoming friendlies (E1 home, E2 away) plus one already COMPLETED
+  // league match with a result, to exercise the result-display path too.
+  // Idempotent via findFirst-before-create, like the rest of this file.
+  const venue = await db.venue.upsert({
+    where: { tenantId_name: { tenantId: tenant.id, name: "Sportplatz Benediktbeuern" } },
+    update: {},
+    create: { tenantId: tenant.id, name: "Sportplatz Benediktbeuern" },
+  });
+
+  const demoMatches = [
+    {
+      teamName: "E1",
+      opponentName: "SV Beispielhausen",
+      startsAt: new Date("2026-09-12T08:00:00.000Z"), // 10:00 Europe/Berlin (CEST)
+      type: "FRIENDLY" as const,
+      homeAway: "HOME" as const,
+      status: "SCHEDULED" as const,
+      venueId: venue.id,
+    },
+    {
+      teamName: "E2",
+      opponentName: "FC Musterdorf",
+      startsAt: new Date("2026-09-13T09:00:00.000Z"), // 11:00 Europe/Berlin (CEST)
+      type: "FRIENDLY" as const,
+      homeAway: "AWAY" as const,
+      status: "SCHEDULED" as const,
+      venueId: null,
+    },
+    {
+      teamName: "E1",
+      opponentName: "TSV Nachbarort",
+      startsAt: new Date("2026-08-15T14:00:00.000Z"), // 16:00 Europe/Berlin (CEST)
+      type: "LEAGUE" as const,
+      homeAway: "HOME" as const,
+      status: "COMPLETED" as const,
+      venueId: venue.id,
+      homeScore: 3,
+      awayScore: 1,
+    },
+  ];
+
+  for (const demoMatch of demoMatches) {
+    const teamSeason = teamSeasonsByTeamName.get(demoMatch.teamName)!;
+    const existingMatch = await db.footballMatch.findFirst({
+      where: {
+        tenantId: tenant.id,
+        teamSeasonId: teamSeason.id,
+        opponentName: demoMatch.opponentName,
+        startsAt: demoMatch.startsAt,
+      },
+    });
+    if (!existingMatch) {
+      await db.footballMatch.create({
+        data: {
+          tenantId: tenant.id,
+          teamSeasonId: teamSeason.id,
+          venueId: demoMatch.venueId,
+          startsAt: demoMatch.startsAt,
+          type: demoMatch.type,
+          status: demoMatch.status,
+          homeAway: demoMatch.homeAway,
+          opponentName: demoMatch.opponentName,
+          homeScore: "homeScore" in demoMatch ? demoMatch.homeScore : undefined,
+          awayScore: "awayScore" in demoMatch ? demoMatch.awayScore : undefined,
+        },
+      });
+    }
+  }
+
   console.log(`Seeded tenant "${tenant.name}" (${tenant.id})`);
   console.log(`Seeded department "${department.name}" (${department.id})`);
   console.log(`Seeded ${demoTeamNames.length} teams: ${demoTeamNames.join(", ")}`);
@@ -216,6 +292,8 @@ async function main() {
   console.log(`Seeded relationship: Anna Mustermann as Erziehungsberechtigte of Max Mustermann.`);
   console.log(`Seeded season "${season.name}" (${season.status}) and age group "${ageGroup.name}".`);
   console.log(`Seeded team season assignments for: ${demoTeamNames.join(", ")}`);
+  console.log(`Seeded venue "${venue.name}" (${venue.id})`);
+  console.log(`Seeded ${demoMatches.length} demo matches for: ${demoTeamNames.join(", ")}`);
 }
 
 main()

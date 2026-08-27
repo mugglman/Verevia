@@ -64,14 +64,19 @@ export function FootballOverview({ department, activeSeason, teamSeasons }: Foot
         ) : (
           <p className="text-sm text-neutral-500">Keine aktive Saison.</p>
         )}
-        {department.canManage && (
-          <Link
-            href="/fussball/saisons"
-            className="inline-block text-sm font-medium text-[var(--color-primary)] hover:underline"
-          >
-            Saisons verwalten
+        <div className="flex flex-wrap gap-4">
+          <Link href="/fussball/spiele" className="text-sm font-medium text-[var(--color-primary)] hover:underline">
+            Spiele
           </Link>
-        )}
+          {department.canManage && (
+            <Link
+              href="/fussball/saisons"
+              className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+            >
+              Saisons verwalten
+            </Link>
+          )}
+        </div>
       </section>
 
       <section className="space-y-3">

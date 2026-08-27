@@ -284,4 +284,59 @@ export class AuthorizationService {
   canReadAgeGroups(roleAssignments: AuthorizationRoleAssignment[]): boolean {
     return roleAssignments.length > 0;
   }
+
+  /**
+   * Venue is tenant-wide, sport-neutral reference data (Phase 10, section
+   * 25) — same shape as AgeGroup: TENANT_ADMIN manages (create/update),
+   * any active RoleAssignment may read. Deliberately NO DEPARTMENT_ADMIN
+   * create/update carve-out — a Venue can be shared across departments/
+   * sports (e.g. a Sporthalle used by both Fußball and Tennis), so
+   * "the department that happens to have booked it first" has no
+   * ownership claim over it; scoping write access to TENANT_ADMIN avoids
+   * that ambiguity entirely.
+   */
+  canOnVenue(roleAssignments: AuthorizationRoleAssignment[], action: Action): boolean {
+    if (action === "read") return roleAssignments.length > 0;
+    return this.isTenantAdmin(roleAssignments);
+  }
+
+  /**
+   * FootballMatch authorization (Phase 10, section 26/27) — deliberately a
+   * NEW method, not a reuse of `canOnTeam`: `canOnTeam`'s create/update is
+   * DEPARTMENT_ADMIN-only (a Team itself is an administrative resource),
+   * but a Match is a day-to-day scheduling resource that COACH/
+   * TEAM_MANAGER of the owning team must be able to create/update
+   * themselves (see work order: "COACH: Matches des eigenen Teams
+   * verwalten") — a genuinely different rule, not a superficially similar
+   * one. ASSISTANT_COACH/PLAYER/other TEAM-scoped roles get read-only,
+   * per the "Betreuer = Unterstützung" role description in
+   * Roles-and-Permissions.md — an assistant coach is not the one who
+   * schedules/reschedules matches on their own authority.
+   */
+  canOnMatch(
+    roleAssignments: AuthorizationRoleAssignment[],
+    action: Action,
+    context: { teamId?: string; departmentId?: string },
+  ): boolean {
+    if (this.isTenantAdmin(roleAssignments)) return true;
+
+    const departmentAdmin = context.departmentId
+      ? this.isDepartmentAdminOf(roleAssignments, context.departmentId)
+      : false;
+    if (departmentAdmin) return true;
+
+    if (!context.teamId) return false;
+
+    if (action === "read") {
+      return roleAssignments.some((ra) => ra.scopeType === "TEAM" && ra.teamId === context.teamId);
+    }
+
+    // create/update: only team-management roles, not every TEAM-scoped role.
+    return roleAssignments.some(
+      (ra) =>
+        ra.scopeType === "TEAM" &&
+        ra.teamId === context.teamId &&
+        (ra.role === "COACH" || ra.role === "TEAM_MANAGER"),
+    );
+  }
 }

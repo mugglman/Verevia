@@ -23,6 +23,19 @@ export interface TeamSeasonDto {
   displayName: string | null;
   status: TeamSeasonStatus;
   canEdit: boolean;
+  /**
+   * Phase 10: whether the caller may create a FootballMatch for this team
+   * season. Deliberately computed here (not only in MatchesService) —
+   * exposed so the web app's match-creation form can offer exactly the
+   * team seasons the caller is allowed to schedule a match for, without
+   * duplicating `canOnMatch` authorization logic client-side (the web app
+   * only ever branches on booleans the API already computed, see
+   * apps/web/src/lib/api.ts convention). Distinct from `canEdit` above,
+   * which reflects `canOnTeam` (TeamSeason-record management, DEPARTMENT_ADMIN-
+   * only) — COACH/TEAM_MANAGER of the team can create matches but cannot
+   * edit the TeamSeason record itself.
+   */
+  canCreateMatches: boolean;
 }
 
 @Injectable()
@@ -52,6 +65,7 @@ export class TeamSeasonsService {
       ageGroup: { name: string };
     },
     canEdit: boolean,
+    canCreateMatches: boolean,
   ): TeamSeasonDto {
     return {
       id: teamSeason.id,
@@ -63,6 +77,7 @@ export class TeamSeasonsService {
       displayName: teamSeason.displayName,
       status: teamSeason.status,
       canEdit,
+      canCreateMatches,
     };
   }
 
@@ -87,6 +102,7 @@ export class TeamSeasonsService {
         this.toDto(
           ts,
           this.authz.canOnTeam(assignments, "update", { teamId: ts.teamId, departmentId: ts.team.departmentId }),
+          this.authz.canOnMatch(assignments, "create", { teamId: ts.teamId, departmentId: ts.team.departmentId }),
         ),
       );
   }
@@ -113,6 +129,10 @@ export class TeamSeasonsService {
     return this.toDto(
       teamSeason,
       this.authz.canOnTeam(assignments, "update", {
+        teamId: teamSeason.teamId,
+        departmentId: teamSeason.team.departmentId,
+      }),
+      this.authz.canOnMatch(assignments, "create", {
         teamId: teamSeason.teamId,
         departmentId: teamSeason.team.departmentId,
       }),
@@ -167,7 +187,7 @@ export class TeamSeasonsService {
         },
         include: { team: { select: { name: true } }, ageGroup: { select: { name: true } } },
       });
-      return this.toDto(teamSeason, true);
+      return this.toDto(teamSeason, true, true);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException("This team already has a season entry for this season");
@@ -208,6 +228,6 @@ export class TeamSeasonsService {
       data: { ageGroupId: dto.ageGroupId, displayName: dto.displayName, status: dto.status },
       include: { team: { select: { name: true } }, ageGroup: { select: { name: true } } },
     });
-    return this.toDto(teamSeason, true);
+    return this.toDto(teamSeason, true, true);
   }
 }

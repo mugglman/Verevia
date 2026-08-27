@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import type { RoleName } from "@/lib/roles";
 import { ROLE_SCOPE } from "@/lib/roles";
@@ -194,4 +195,94 @@ export async function revokeRelationshipAction(personId: string, relationshipId:
     method: "DELETE",
   });
   revalidatePath("/personen");
+}
+
+export async function createMatchAction(formData: FormData) {
+  const tenantId = await requireTenantId();
+  const teamSeasonId = String(formData.get("teamSeasonId") ?? "");
+  const opponentName = String(formData.get("opponentName") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const homeAway = String(formData.get("homeAway") ?? "");
+  const type = String(formData.get("type") ?? "");
+  const venueId = String(formData.get("venueId") ?? "");
+  const notes = String(formData.get("notes") ?? "");
+  await apiFetch("/api/v1/football/matches", tenantId, {
+    method: "POST",
+    body: JSON.stringify({
+      teamSeasonId,
+      opponentName,
+      startsAt,
+      homeAway,
+      type,
+      ...(venueId ? { venueId } : {}),
+      ...(notes ? { notes } : {}),
+    }),
+  });
+  revalidatePath("/fussball/spiele");
+  // Unlike every other create action in this file, the match-creation form
+  // lives on its own dedicated page (/fussball/spiele/neu, not inline on
+  // the list) — without an explicit redirect the user would stay on the
+  // now-stale "neu" page after submission instead of seeing the new match.
+  redirect("/fussball/spiele");
+}
+
+export async function updateMatchAction(matchId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const opponentName = String(formData.get("opponentName") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const homeAway = String(formData.get("homeAway") ?? "");
+  const type = String(formData.get("type") ?? "");
+  const status = String(formData.get("status") ?? "");
+  const venueId = String(formData.get("venueId") ?? "");
+  const notes = String(formData.get("notes") ?? "");
+  const homeScoreRaw = String(formData.get("homeScore") ?? "");
+  const awayScoreRaw = String(formData.get("awayScore") ?? "");
+  await apiFetch(`/api/v1/football/matches/${matchId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({
+      opponentName,
+      startsAt,
+      homeAway,
+      type,
+      status,
+      notes,
+      ...(venueId ? { venueId } : {}),
+      ...(homeScoreRaw ? { homeScore: Number(homeScoreRaw) } : {}),
+      ...(awayScoreRaw ? { awayScore: Number(awayScoreRaw) } : {}),
+    }),
+  });
+  revalidatePath("/fussball/spiele");
+  revalidatePath(`/fussball/spiele/${matchId}`);
+}
+
+export async function createVenueAction(formData: FormData) {
+  const tenantId = await requireTenantId();
+  const name = String(formData.get("name") ?? "");
+  const street = String(formData.get("street") ?? "");
+  const postalCode = String(formData.get("postalCode") ?? "");
+  const city = String(formData.get("city") ?? "");
+  await apiFetch("/api/v1/venues", tenantId, {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      ...(street ? { street } : {}),
+      ...(postalCode ? { postalCode } : {}),
+      ...(city ? { city } : {}),
+    }),
+  });
+  revalidatePath("/spielstaetten");
+}
+
+export async function updateVenueAction(venueId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const name = String(formData.get("name") ?? "");
+  const street = String(formData.get("street") ?? "");
+  const postalCode = String(formData.get("postalCode") ?? "");
+  const city = String(formData.get("city") ?? "");
+  const status = String(formData.get("status") ?? "");
+  await apiFetch(`/api/v1/venues/${venueId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({ name, street, postalCode, city, status }),
+  });
+  revalidatePath("/spielstaetten");
 }
