@@ -294,6 +294,129 @@ async function main() {
   console.log(`Seeded team season assignments for: ${demoTeamNames.join(", ")}`);
   console.log(`Seeded venue "${venue.name}" (${venue.id})`);
   console.log(`Seeded ${demoMatches.length} demo matches for: ${demoTeamNames.join(", ")}`);
+
+  // Phase 11: tournament core demo structure — "Verevia Jugendcup 2026", a
+  // GROUPS-mode tournament bound to the same demo season, with one internal
+  // participant (E1) and three purely fictional external participants, two
+  // groups (enough participants to show grouping actually doing something),
+  // the existing demo venue assigned to the tournament, and one manually
+  // created TOURNAMENT-type FootballMatch. No automatic schedule/bracket
+  // generation — that's Phase 12. Idempotent via findFirst-before-create,
+  // like the rest of this file (FootballTournament has no natural unique
+  // key to upsert on).
+  let tournament = await db.footballTournament.findFirst({
+    where: { tenantId: tenant.id, departmentId: department.id, name: "Verevia Jugendcup 2026" },
+  });
+  if (!tournament) {
+    tournament = await db.footballTournament.create({
+      data: {
+        tenantId: tenant.id,
+        departmentId: department.id,
+        seasonId: season.id,
+        name: "Verevia Jugendcup 2026",
+        description: "Fiktives Jugendturnier zur Demonstration des Turnier-Grundmodells.",
+        startsAt: new Date("2026-10-03T07:00:00.000Z"), // 09:00 Europe/Berlin (CET)
+        endsAt: new Date("2026-10-03T16:00:00.000Z"), // 18:00 Europe/Berlin (CET)
+        status: "PLANNED",
+        mode: "GROUPS",
+      },
+    });
+  }
+
+  const e1TeamSeason = teamSeasonsByTeamName.get("E1")!;
+
+  async function ensureInternalParticipant(teamSeasonId: string) {
+    let participant = await db.tournamentParticipant.findFirst({
+      where: { tenantId: tenant.id, tournamentId: tournament!.id, teamSeasonId },
+    });
+    if (!participant) {
+      participant = await db.tournamentParticipant.create({
+        data: { tenantId: tenant.id, tournamentId: tournament!.id, teamSeasonId },
+      });
+    }
+    return participant;
+  }
+
+  async function ensureExternalParticipant(externalName: string) {
+    let participant = await db.tournamentParticipant.findFirst({
+      where: { tenantId: tenant.id, tournamentId: tournament!.id, externalName },
+    });
+    if (!participant) {
+      participant = await db.tournamentParticipant.create({
+        data: { tenantId: tenant.id, tournamentId: tournament!.id, externalName },
+      });
+    }
+    return participant;
+  }
+
+  const participantE1 = await ensureInternalParticipant(e1TeamSeason.id);
+  const participantTesthausen = await ensureExternalParticipant("SV Testhausen");
+  const participantMusterstadt = await ensureExternalParticipant("FC Musterstadt");
+  const participantBeispieldorf = await ensureExternalParticipant("TSV Beispieldorf");
+
+  async function ensureGroup(name: string, displayOrder: number) {
+    let group = await db.tournamentGroup.findFirst({
+      where: { tenantId: tenant.id, tournamentId: tournament!.id, name },
+    });
+    if (!group) {
+      group = await db.tournamentGroup.create({
+        data: { tenantId: tenant.id, tournamentId: tournament!.id, name, displayOrder },
+      });
+    }
+    return group;
+  }
+
+  const groupA = await ensureGroup("Gruppe A", 1);
+  const groupB = await ensureGroup("Gruppe B", 2);
+
+  async function assignToGroup(participant: { id: string; groupId: string | null }, groupId: string) {
+    if (participant.groupId !== groupId) {
+      await db.tournamentParticipant.update({ where: { id: participant.id }, data: { groupId } });
+    }
+  }
+  await assignToGroup(participantE1, groupA.id);
+  await assignToGroup(participantTesthausen, groupA.id);
+  await assignToGroup(participantMusterstadt, groupB.id);
+  await assignToGroup(participantBeispieldorf, groupB.id);
+
+  const existingTournamentVenue = await db.tournamentVenue.findFirst({
+    where: { tenantId: tenant.id, tournamentId: tournament.id, venueId: venue.id },
+  });
+  if (!existingTournamentVenue) {
+    await db.tournamentVenue.create({
+      data: { tenantId: tenant.id, tournamentId: tournament.id, venueId: venue.id, displayOrder: 1, label: "Hauptplatz" },
+    });
+  }
+
+  const tournamentMatchStartsAt = new Date("2026-10-03T08:00:00.000Z"); // 10:00 Europe/Berlin (CET)
+  const existingTournamentMatch = await db.footballMatch.findFirst({
+    where: {
+      tenantId: tenant.id,
+      tournamentId: tournament.id,
+      homeParticipantId: participantE1.id,
+      awayParticipantId: participantTesthausen.id,
+    },
+  });
+  if (!existingTournamentMatch) {
+    await db.footballMatch.create({
+      data: {
+        tenantId: tenant.id,
+        tournamentId: tournament.id,
+        tournamentGroupId: groupA.id,
+        homeParticipantId: participantE1.id,
+        awayParticipantId: participantTesthausen.id,
+        venueId: venue.id,
+        startsAt: tournamentMatchStartsAt,
+        type: "TOURNAMENT",
+        status: "SCHEDULED",
+        homeAway: "HOME",
+      },
+    });
+  }
+
+  console.log(`Seeded tournament "${tournament.name}" (${tournament.id})`);
+  console.log(`Seeded 4 tournament participants (1 internal, 3 external) across 2 groups.`);
+  console.log(`Seeded 1 tournament venue assignment and 1 manual tournament match.`);
 }
 
 main()

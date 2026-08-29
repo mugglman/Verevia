@@ -6,10 +6,36 @@ import { MatchesController } from "./matches/matches.controller";
 import { MatchesService } from "./matches/matches.service";
 import { TeamSeasonsController } from "./team-seasons/team-seasons.controller";
 import { TeamSeasonsService } from "./team-seasons/team-seasons.service";
+import { ParticipantsController } from "./tournaments/participants/participants.controller";
+import { ParticipantsService } from "./tournaments/participants/participants.service";
+import { TournamentGroupsController } from "./tournaments/groups/tournament-groups.controller";
+import { TournamentGroupsService } from "./tournaments/groups/tournament-groups.service";
+import { TournamentMatchesController } from "./tournaments/matches/tournament-matches.controller";
+import { TournamentVenuesController } from "./tournaments/venues/tournament-venues.controller";
+import { TournamentVenuesService } from "./tournaments/venues/tournament-venues.service";
+import { TournamentsController } from "./tournaments/tournaments.controller";
+import { TournamentsService } from "./tournaments/tournaments.service";
 
 @Module({
   imports: [AuthorizationModule],
-  controllers: [AgeGroupsController, TeamSeasonsController, MatchesController],
-  providers: [AgeGroupsService, TeamSeasonsService, MatchesService],
+  controllers: [
+    AgeGroupsController,
+    TeamSeasonsController,
+    MatchesController,
+    TournamentsController,
+    ParticipantsController,
+    TournamentVenuesController,
+    TournamentGroupsController,
+    TournamentMatchesController,
+  ],
+  providers: [
+    AgeGroupsService,
+    TeamSeasonsService,
+    MatchesService,
+    TournamentsService,
+    ParticipantsService,
+    TournamentVenuesService,
+    TournamentGroupsService,
+  ],
 })
 export class FootballModule {}

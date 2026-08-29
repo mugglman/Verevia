@@ -25,4 +25,12 @@ export class ListMatchesQueryDto {
   @IsOptional()
   @IsEnum(MatchType)
   type?: MatchType;
+
+  @IsOptional()
+  @IsUUID()
+  tournamentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  tournamentGroupId?: string;
 }

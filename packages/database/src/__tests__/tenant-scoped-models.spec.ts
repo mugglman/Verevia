@@ -27,7 +27,7 @@ describe("tenant-scoped model derivation", () => {
     );
   }
 
-  it("includes every known tenant-scoped model, including the Phase 9/10 additions", () => {
+  it("includes every known tenant-scoped model, including the Phase 9/10/11 additions", () => {
     const derived = deriveTenantScopedModels();
     expect([...derived].sort()).toEqual(
       [
@@ -42,6 +42,10 @@ describe("tenant-scoped model derivation", () => {
         "TeamSeason",
         "Venue",
         "FootballMatch",
+        "FootballTournament",
+        "TournamentParticipant",
+        "TournamentVenue",
+        "TournamentGroup",
       ].sort(),
     );
   });

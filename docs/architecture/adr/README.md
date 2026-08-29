@@ -20,3 +20,4 @@ Jede wesentliche architektonische Entscheidung wird als eigenes ADR-Dokument fes
 - [0005 – Minderjährigen-/Guardian-Modell](./0005-minor-guardian-relationship-model.md) — ACCEPTED
 - [0006 – Multi-Tenant Authorization / RLS Request Context](./0006-multi-tenant-rls-request-context.md) — ACCEPTED
 - [0007 – API-Versionierung](./0007-api-versioning.md) — ACCEPTED
+- [0008 – Turnierspiele erweitern FootballMatch](./0008-tournament-match-model.md) — ACCEPTED

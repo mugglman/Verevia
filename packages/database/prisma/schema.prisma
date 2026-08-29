@@ -6,12 +6,16 @@
 //   - docs/ARCHITEKTUR_FINALISIERUNG.md (finales RoleAssignment-Modell, RLS-Konzept)
 //   - docs/architecture/adr/0002-0006 (ACCEPTED)
 //
-// Noch NICHT enthalten: Event/Attendance/Task/Tournament/
+// Noch NICHT enthalten: Event/Attendance/Task/
 // Notification/AuditLog/JointTeam — folgen in einem eigenen, fachlichen
 // Arbeitspaket. Season/AgeGroup/TeamSeason (Fußball-Saisonverwaltung)
 // kamen in Phase 9 hinzu, siehe docs/PHASE_9_FOOTBALL_SEASON_REPORT.md.
 // Venue/FootballMatch (Spielstätten- und Spielgrundmodell) kamen in
 // Phase 10 hinzu, siehe docs/PHASE_10_MATCH_FOUNDATION_REPORT.md.
+// FootballTournament/TournamentParticipant/TournamentVenue/TournamentGroup
+// (Turnier-Grundmodell, kein automatischer Spielplan/Bracket-Generator)
+// kamen in Phase 11 hinzu, siehe docs/PHASE_11_TOURNAMENT_CORE_REPORT.md
+// und docs/architecture/adr/0008-tournament-match-model.md.
 // Prisma ist absichtlich auf ^6.x gepinnt (nicht 7), siehe
 // docs/architecture/adr/0002-authentication-strategy.md.
 //
@@ -175,6 +179,36 @@ enum MatchStatus {
   COMPLETED
 }
 
+/// Schlanker Lebenszyklus eines Turniers (Phase 11) — bewusst keine
+/// komplexe Workflow-Engine, kein automatischer Statuswechsel.
+enum TournamentStatus {
+  DRAFT
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+/// Beschreibt nur die geplante Turnierstruktur (Phase 11) — bewusst OHNE
+/// jede automatische Logik (Gruppenbildung, Spielplangenerierung,
+/// Tabellenberechnung), siehe Auftrag. Optional auf `FootballTournament`,
+/// da ein `DRAFT`-Turnier seine Struktur womöglich noch nicht festgelegt
+/// hat.
+enum TournamentMode {
+  GROUPS
+  KNOCKOUT
+  GROUPS_AND_KNOCKOUT
+}
+
+/// Lebenszyklus eines Turnierteilnehmers (Phase 11) — identisches Muster
+/// zu `TeamMemberStatus`/`TeamSeasonStatus`: ein Teilnehmer kann sich vor
+/// Turnierbeginn zurückziehen, ohne die Zeile zu löschen (an ihr könnten
+/// bereits `FootballMatch`-Referenzen hängen).
+enum ParticipantStatus {
+  ACTIVE
+  WITHDRAWN
+}
+
 /// Lebenszyklus einer AccountInvitation. Bewusst nur vier Zustände, keine
 /// Workflow-Engine — siehe Modellkommentar an AccountInvitation.
 enum AccountInvitationStatus {
@@ -296,18 +330,22 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  departments         Department[]
-  persons             Person[]
-  roleAssignments     RoleAssignment[]
-  personRelationships PersonRelationship[]
-  teams               Team[]
-  teamMembers         TeamMember[]
-  accountInvitations  AccountInvitation[]
-  seasons             Season[]
-  ageGroups           AgeGroup[]
-  teamSeasons         TeamSeason[]
-  venues              Venue[]
-  footballMatches     FootballMatch[]
+  departments            Department[]
+  persons                Person[]
+  roleAssignments        RoleAssignment[]
+  personRelationships    PersonRelationship[]
+  teams                  Team[]
+  teamMembers            TeamMember[]
+  accountInvitations     AccountInvitation[]
+  seasons                Season[]
+  ageGroups              AgeGroup[]
+  teamSeasons            TeamSeason[]
+  venues                 Venue[]
+  footballMatches        FootballMatch[]
+  footballTournaments    FootballTournament[]
+  tournamentParticipants TournamentParticipant[]
+  tournamentVenues       TournamentVenue[]
+  tournamentGroups       TournamentGroup[]
 
   @@map("tenant")
 }
@@ -327,9 +365,10 @@ model Department {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  teams           Team[]
-  roleAssignments RoleAssignment[]
-  seasons         Season[]
+  teams               Team[]
+  roleAssignments     RoleAssignment[]
+  seasons             Season[]
+  footballTournaments FootballTournament[]
 
   @@unique([tenantId, name])
   // Composite-Unique (zusätzlich zum bereits eindeutigen `id`), damit
@@ -676,10 +715,15 @@ model Season {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  teamSeasons TeamSeason[]
+  teamSeasons         TeamSeason[]
+  footballTournaments FootballTournament[]
 
   @@unique([departmentId, name])
   @@unique([tenantId, id])
+  // Ergänzt in Phase 11 als Composite-Unique-Ziel für
+  // FootballTournament.seasonId — erzwingt, dass ein referenziertes
+  // Turnier tatsächlich zur selben Department gehört wie die Season.
+  @@unique([tenantId, departmentId, id])
   @@index([tenantId])
   @@index([departmentId])
   @@map("season")
@@ -755,7 +799,8 @@ model TeamSeason {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  footballMatches FootballMatch[]
+  footballMatches        FootballMatch[]
+  tournamentParticipants TournamentParticipant[]
 
   @@unique([teamId, seasonId])
   // Ergänzt in Phase 10: Composite-Unique-Ziel für FootballMatch.teamSeasonId
@@ -808,7 +853,8 @@ model Venue {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  footballMatches FootballMatch[]
+  footballMatches  FootballMatch[]
+  tournamentVenues TournamentVenue[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, id])
@@ -872,30 +918,226 @@ model Venue {
 /// dass beide Felder nur gesetzt sein dürfen, wenn `status = COMPLETED`
 /// ist (kein fragiler Trigger nötig — ein einfacher spaltenbasierter
 /// CHECK reicht).
+///
+/// Phase 11 (ADR 0008): `teamSeasonId`/`opponentName` (Vereinsmatch-Modus)
+/// und `tournamentId`+`homeParticipantId`+`awayParticipantId`
+/// (Turniermatch-Modus, optional `tournamentGroupId`) sind zwei sich
+/// gegenseitig ausschließende Belegungen derselben Zeile, per CHECK
+/// erzwungen (`football_match_mode_consistency`) — siehe ADR für die
+/// ausführliche Begründung gegen ein paralleles Turnierspiel-Modell.
 model FootballMatch {
   id           String        @id @default(uuid())
   tenantId     String
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  teamSeasonId String
+  // Vereinsmatch-Modus (Phase 10, unverändert) — NULL im Turniermatch-Modus.
+  teamSeasonId String?
   // Composite FK (tenantId, teamSeasonId) → team_season(tenantId, id) —
   // gleiches Cross-Tenant-Konsistenzmuster wie überall sonst im Schema.
-  teamSeason   TeamSeason    @relation(fields: [tenantId, teamSeasonId], references: [tenantId, id], onDelete: Restrict)
+  teamSeason   TeamSeason?   @relation(fields: [tenantId, teamSeasonId], references: [tenantId, id], onDelete: Restrict)
+  opponentName String?
   venueId      String?
   venue        Venue?        @relation(fields: [tenantId, venueId], references: [tenantId, id], onDelete: Restrict)
   startsAt     DateTime
   type         MatchType
   status       MatchStatus   @default(SCHEDULED)
   homeAway     MatchHomeAway
-  opponentName String
   homeScore    Int?
   awayScore    Int?
   notes        String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  // Turniermatch-Modus (Phase 11, ADR 0008) — alle vier NULL im
+  // Vereinsmatch-Modus. `tournamentGroupId`/`home`/`awayParticipantId`
+  // referenzieren jeweils über (tenantId, tournamentId, X) — das
+  // zusätzliche Drei-Spalten-Unique auf TournamentGroup/TournamentParticipant
+  // erzwingt damit strukturell, dass Gruppe und Teilnehmer tatsächlich zu
+  // GENAU diesem Turnier gehören, ohne eigenen Trigger.
+  tournamentId      String?
+  tournament        FootballTournament?    @relation(fields: [tenantId, tournamentId], references: [tenantId, id], onDelete: Restrict)
+  tournamentGroupId String?
+  tournamentGroup   TournamentGroup?       @relation(fields: [tenantId, tournamentId, tournamentGroupId], references: [tenantId, tournamentId, id], onDelete: Restrict)
+  homeParticipantId String?
+  homeParticipant   TournamentParticipant? @relation("HomeParticipant", fields: [tenantId, tournamentId, homeParticipantId], references: [tenantId, tournamentId, id], onDelete: Restrict)
+  awayParticipantId String?
+  awayParticipant   TournamentParticipant? @relation("AwayParticipant", fields: [tenantId, tournamentId, awayParticipantId], references: [tenantId, tournamentId, id], onDelete: Restrict)
+
   @@index([tenantId])
   @@index([teamSeasonId])
   @@index([venueId])
   @@index([startsAt])
+  @@index([tournamentId])
+  @@index([tournamentGroupId])
+  @@index([homeParticipantId])
+  @@index([awayParticipantId])
   @@map("football_match")
+}
+
+/// Fußball-Turnier (Phase 11) — bewusst `FootballTournament` (nicht
+/// sportneutral `Tournament`), analog zur `FootballMatch`-Entscheidung aus
+/// Phase 10: die fachlichen Unterschiede zwischen Sportarten sind für ein
+/// gemeinsames Turniermodell noch zu groß/unklar. `departmentId`
+/// verpflichtend (ein Turnier gehört immer zu genau einer Abteilung),
+/// anwendungsseitig auf `sportType: FOOTBALL` geprüft (gleiches Muster wie
+/// `TeamSeasonsService.create()`, Phase 9) — kein DB-Trigger, siehe dort
+/// für die Begründung.
+///
+/// `seasonId` bewusst OPTIONAL: ein Turnier muss nicht zwingend einer
+/// laufenden Saison zugeordnet sein — z. B. ein Sommerturnier zwischen
+/// zwei Saisons, oder das allererste Turnier eines Vereins, bevor
+/// überhaupt eine `Season` angelegt wurde. Eine Pflichtzuordnung hätte
+/// Organisatoren gezwungen, für rein saisonunabhängige Events eine
+/// künstliche Platzhalter-Saison anzulegen. Falls gesetzt, muss die
+/// Season zur selben Abteilung gehören wie das Turnier — durchgesetzt per
+/// Composite-FK `(tenantId, departmentId, seasonId)` gegen ein
+/// zusätzliches Drei-Spalten-Unique auf `Season`.
+///
+/// `mode` ebenfalls optional (ein frisches `DRAFT`-Turnier hat seine
+/// Struktur womöglich noch nicht festgelegt) und rein beschreibend — keine
+/// automatische Logik daran geknüpft (siehe Auftrag: "noch keine
+/// automatische Logik implementieren").
+model FootballTournament {
+  id           String           @id @default(uuid())
+  tenantId     String
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  departmentId String
+  department   Department       @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
+  seasonId     String?
+  // Composite FK über (tenantId, departmentId, seasonId) statt nur
+  // (tenantId, seasonId) — erzwingt zusätzlich auf DB-Ebene, dass die
+  // referenzierte Season zur selben Department gehört wie das Turnier.
+  season       Season?          @relation(fields: [tenantId, departmentId, seasonId], references: [tenantId, departmentId, id], onDelete: Restrict)
+  name         String
+  description  String?
+  startsAt     DateTime
+  endsAt       DateTime?
+  status       TournamentStatus @default(DRAFT)
+  mode         TournamentMode?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  participants TournamentParticipant[]
+  venues       TournamentVenue[]
+  groups       TournamentGroup[]
+  matches      FootballMatch[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([departmentId])
+  @@index([seasonId])
+  @@map("football_tournament")
+}
+
+/// Teilnehmer eines Turniers (Phase 11) — entweder eine interne
+/// `TeamSeason` desselben Tenants ODER ein externer Freitextname, nie
+/// beides, nie keines (CHECK `tournament_participant_source_xor`). Siehe
+/// ADR 0008 für die Begründung, warum `FootballMatch` selbst nicht
+/// zwischen intern/extern unterscheiden muss — das übernimmt allein diese
+/// Entity.
+///
+/// Bewusst KEINE vollständige externe Club-/Team-Datenbank — `externalName`
+/// ist reiner Freitext für den MVP. Dokumentierter künftiger
+/// Erweiterungspunkt: ein `externalClubName`-Feld oder ein eigenes,
+/// leichtes External-Club-Verzeichnis, falls wiederkehrende externe
+/// Gastmannschaften über mehrere Turniere hinweg wiedererkannt werden
+/// sollen — nicht Teil dieser Phase.
+///
+/// Duplikatschutz: dieselbe interne `TeamSeason` darf pro Turnier nur
+/// einmal Teilnehmer sein (partieller Unique-Index). Für externe Namen
+/// case-insensitive Duplikatprüfung (funktionaler partieller Unique-Index
+/// auf `lower(externalName)`) — Prisma 6 bildet weder WHERE-Klauseln noch
+/// Ausdrucks-Indizes deklarativ ab, siehe SQL-Migration.
+model TournamentParticipant {
+  id           String             @id @default(uuid())
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tournamentId String
+  tournament   FootballTournament @relation(fields: [tenantId, tournamentId], references: [tenantId, id], onDelete: Restrict)
+  teamSeasonId String?
+  // Composite FK (tenantId, teamSeasonId) → team_season(tenantId, id).
+  teamSeason   TeamSeason?        @relation(fields: [tenantId, teamSeasonId], references: [tenantId, id], onDelete: Restrict)
+  externalName String?
+  groupId      String?
+  // Composite FK über (tenantId, tournamentId, groupId) — erzwingt, dass
+  // die Gruppe zu GENAU diesem Turnier gehört (gleiches Muster wie am
+  // FootballMatch, siehe ADR 0008). Bewusst `onDelete: Restrict`, NICHT
+  // `SetNull`: bei einer Composite-FK, deren Nicht-`groupId`-Spalten
+  // (`tenantId`, `tournamentId`) selbst NOT NULL sind, würde `SetNull`
+  // versuchen, ALLE FK-Spalten zu leeren — inklusive der Pflichtfelder —
+  // und liefe zur Laufzeit auf einen NOT-NULL-Constraint-Verstoß hinaus.
+  // `Restrict` ist hier ohnehin fachlich richtig: eine Gruppe, der noch
+  // Teilnehmer zugeordnet sind, darf nicht gelöscht werden.
+  group        TournamentGroup?   @relation(fields: [tenantId, tournamentId, groupId], references: [tenantId, tournamentId, id], onDelete: Restrict)
+  status       ParticipantStatus  @default(ACTIVE)
+  seed         Int?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  homeMatches FootballMatch[] @relation("HomeParticipant")
+  awayMatches FootballMatch[] @relation("AwayParticipant")
+
+  // Drei-Spalten-Unique — Composite-FK-Ziel für FootballMatch.home/awayParticipantId
+  // (siehe ADR 0008) und für TournamentGroupParticipant-artige Referenzen.
+  @@unique([tenantId, tournamentId, id])
+  @@index([tenantId])
+  @@index([tournamentId])
+  @@index([teamSeasonId])
+  @@index([groupId])
+  @@map("tournament_participant")
+}
+
+/// Zuordnung einer bestehenden `Venue` zu einem Turnier (Phase 11) — die
+/// Phase-10-Entscheidung "jede konkrete Spielfläche ist eine eigene
+/// `Venue`" bleibt verbindlich, kein neues Pitch-/Field-Untermodell. Ein
+/// Turnier kann mehrere Venues nutzen (z. B. Haupt-/Nebenplatz).
+/// `label` ist eine optionale, rein turnierbezogene Anzeige-Überschreibung
+/// (z. B. "Feld 1"), OHNE `venue.name` zu duplizieren (NULL im Regelfall).
+model TournamentVenue {
+  id           String             @id @default(uuid())
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tournamentId String
+  tournament   FootballTournament @relation(fields: [tenantId, tournamentId], references: [tenantId, id], onDelete: Restrict)
+  venueId      String
+  venue        Venue              @relation(fields: [tenantId, venueId], references: [tenantId, id], onDelete: Restrict)
+  displayOrder Int                @default(0)
+  label        String?
+  createdAt    DateTime           @default(now())
+
+  @@unique([tournamentId, venueId])
+  @@index([tenantId])
+  @@index([tournamentId])
+  @@index([venueId])
+  @@map("tournament_venue")
+}
+
+/// Gruppe innerhalb eines Turniers (Phase 11), z. B. "Gruppe A". Rein
+/// manuell angelegt und befüllt — keine automatische Gruppenauslosung
+/// (nicht Teil dieser Phase). Teilnehmer werden über
+/// `TournamentParticipant.groupId` zugeordnet (siehe dort) — bewusst
+/// KEINE eigene Zuordnungstabelle, da ein Teilnehmer fachlich höchstens
+/// einer Gruppe angehört (K.-o.-only-Teilnehmer bleiben mit `groupId:
+/// NULL` gruppenlos) — eine zusätzliche Join-Tabelle wäre für dieses
+/// 1:n-Verhältnis unnötige Komplexität.
+model TournamentGroup {
+  id           String             @id @default(uuid())
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tournamentId String
+  tournament   FootballTournament @relation(fields: [tenantId, tournamentId], references: [tenantId, id], onDelete: Restrict)
+  name         String
+  displayOrder Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  participants TournamentParticipant[]
+  matches      FootballMatch[]
+
+  // Drei-Spalten-Unique — Composite-FK-Ziel für FootballMatch.tournamentGroupId
+  // und TournamentParticipant.groupId (siehe ADR 0008).
+  @@unique([tenantId, tournamentId, id])
+  @@unique([tournamentId, name])
+  @@index([tenantId])
+  @@index([tournamentId])
+  @@map("tournament_group")
 }

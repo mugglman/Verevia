@@ -96,10 +96,7 @@ export function MatchDetail({ match, venues }: MatchDetailProps) {
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-neutral-600">Datum und Uhrzeit</span>
-            <MatchDateTimeInput defaultValueIso={match.startsAt} />
-          </div>
+          <MatchDateTimeInput defaultValueIso={match.startsAt} />
 
           <div className="flex flex-col gap-1">
             <label htmlFor="homeAway" className="text-sm text-neutral-600">

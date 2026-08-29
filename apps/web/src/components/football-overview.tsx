@@ -68,6 +68,9 @@ export function FootballOverview({ department, activeSeason, teamSeasons }: Foot
           <Link href="/fussball/spiele" className="text-sm font-medium text-[var(--color-primary)] hover:underline">
             Spiele
           </Link>
+          <Link href="/fussball/turniere" className="text-sm font-medium text-[var(--color-primary)] hover:underline">
+            Turniere
+          </Link>
           {department.canManage && (
             <Link
               href="/fussball/saisons"

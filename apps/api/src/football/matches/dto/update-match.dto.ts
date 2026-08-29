@@ -24,6 +24,13 @@ export class UpdateMatchDto {
   @MaxLength(150)
   opponentName?: string;
 
+  // Only meaningful for tournament matches (see ADR 0008) — reassigns the
+  // match to a different group within the same tournament. tournamentId,
+  // homeParticipantId and awayParticipantId are immutable after creation.
+  @IsOptional()
+  @IsUUID()
+  tournamentGroupId?: string;
+
   @IsOptional()
   @IsEnum(MatchStatus)
   status?: MatchStatus;
