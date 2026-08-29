@@ -77,10 +77,7 @@ export function MatchCreateForm({ teamSeasons, venues }: MatchCreateFormProps) {
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-neutral-600">Datum und Uhrzeit</span>
-            <MatchDateTimeInput />
-          </div>
+          <MatchDateTimeInput />
 
           <div className="flex flex-col gap-1">
             <label htmlFor="homeAway" className="text-sm text-neutral-600">

@@ -286,3 +286,142 @@ export async function updateVenueAction(venueId: string, formData: FormData) {
   });
   revalidatePath("/spielstaetten");
 }
+
+export async function createTournamentAction(departmentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const name = String(formData.get("name") ?? "");
+  const description = String(formData.get("description") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const mode = String(formData.get("mode") ?? "");
+  const result = await apiFetch<{ id: string }>("/api/v1/football/tournaments", tenantId, {
+    method: "POST",
+    body: JSON.stringify({
+      departmentId,
+      name,
+      startsAt,
+      ...(description ? { description } : {}),
+      ...(endsAt ? { endsAt } : {}),
+      ...(seasonId ? { seasonId } : {}),
+      ...(mode ? { mode } : {}),
+    }),
+  });
+  revalidatePath("/fussball/turniere");
+  // Section 26 of the work order: after creating a tournament, open its
+  // detail page — unlike most create actions in this file, which stay on
+  // an inline list, the create form lives on its own page.
+  if (result.ok) {
+    redirect(`/fussball/turniere/${result.data.id}`);
+  }
+  redirect("/fussball/turniere");
+}
+
+export async function updateTournamentAction(tournamentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const name = String(formData.get("name") ?? "");
+  const description = String(formData.get("description") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  const status = String(formData.get("status") ?? "");
+  const mode = String(formData.get("mode") ?? "");
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({
+      name,
+      startsAt,
+      status,
+      ...(description ? { description } : {}),
+      ...(endsAt ? { endsAt } : {}),
+      ...(mode ? { mode } : {}),
+    }),
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+  revalidatePath("/fussball/turniere");
+}
+
+export async function addInternalParticipantAction(tournamentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const teamSeasonId = String(formData.get("teamSeasonId") ?? "");
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}/participants`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ teamSeasonId }),
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+}
+
+export async function addExternalParticipantAction(tournamentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const externalName = String(formData.get("externalName") ?? "");
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}/participants`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ externalName }),
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+}
+
+export async function assignParticipantGroupAction(
+  tournamentId: string,
+  participantId: string,
+  formData: FormData,
+) {
+  const tenantId = await requireTenantId();
+  const groupId = String(formData.get("groupId") ?? "");
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}/participants/${participantId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({ groupId }),
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+}
+
+export async function createTournamentGroupAction(tournamentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const name = String(formData.get("name") ?? "");
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}/groups`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+}
+
+export async function addTournamentVenueAction(tournamentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const venueId = String(formData.get("venueId") ?? "");
+  const label = String(formData.get("label") ?? "");
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}/venues`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ venueId, ...(label ? { label } : {}) }),
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+}
+
+export async function removeTournamentVenueAction(tournamentId: string, venueId: string) {
+  const tenantId = await requireTenantId();
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}/venues/${venueId}`, tenantId, {
+    method: "DELETE",
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+}
+
+export async function createTournamentMatchAction(tournamentId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const homeParticipantId = String(formData.get("homeParticipantId") ?? "");
+  const awayParticipantId = String(formData.get("awayParticipantId") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const homeAway = String(formData.get("homeAway") ?? "");
+  const tournamentGroupId = String(formData.get("tournamentGroupId") ?? "");
+  const venueId = String(formData.get("venueId") ?? "");
+  await apiFetch(`/api/v1/football/tournaments/${tournamentId}/matches`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({
+      homeParticipantId,
+      awayParticipantId,
+      startsAt,
+      homeAway,
+      type: "TOURNAMENT",
+      ...(tournamentGroupId ? { tournamentGroupId } : {}),
+      ...(venueId ? { venueId } : {}),
+    }),
+  });
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+}

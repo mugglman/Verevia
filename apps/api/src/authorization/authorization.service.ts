@@ -255,6 +255,22 @@ export class AuthorizationService {
   }
 
   /**
+   * FootballTournament authorization (Phase 11, section 30/31) is
+   * deliberately a direct reuse of `canOnSeason` (not a new method) — the
+   * desired rule set is byte-for-byte identical: TENANT_ADMIN always;
+   * DEPARTMENT_ADMIN of the tournament's department may create/update
+   * (explicitly restricted to these two roles for Phase 11 — TEAM_MANAGER/
+   * COACH read-only, no tournament creation for them in this phase); read
+   * follows the same department-scope cascade (department-scoped role in
+   * that department, or a team-scoped role whose team belongs to it).
+   * `TournamentParticipant`/`TournamentVenue`/`TournamentGroup` reuse the
+   * SAME check via their parent tournament's `departmentId` — they are
+   * child resources of a tournament, not independently authorized
+   * resources, exactly like `TeamSeason` reuses `canOnTeam` below. See
+   * call sites in `TournamentsService`/`TournamentParticipantsService`/etc.
+   */
+
+  /**
    * TeamSeason authorization is deliberately a direct reuse of
    * `canOnTeam` (not a new method) — a TeamSeason is a season-specific
    * attachment to an existing Team, and the desired rule set is

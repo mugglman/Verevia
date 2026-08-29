@@ -7,9 +7,10 @@ import Link from "next/link";
  * ReBAC access), and Fußball (Phase 9, season foundation). All links are
  * always shown; each page itself enforces its own access rule
  * (403/empty-state message) rather than hiding the link, since Nav has no
- * access to the caller's permissions. No nav items for features that
- * don't exist yet (Turniere, Kalender, Anwesenheit, Chat, Finanzen,
- * Tennis, Stockschützen, Radsport).
+ * access to the caller's permissions. Turniere (Phase 11) is reached via
+ * the Fußball overview page, not a top-level entry, same as Saisons. No
+ * nav items for features that don't exist yet (Kalender, Anwesenheit,
+ * Chat, Finanzen, Tennis, Stockschützen, Radsport).
  */
 export function Nav() {
   return (
