@@ -417,6 +417,92 @@ async function main() {
   console.log(`Seeded tournament "${tournament.name}" (${tournament.id})`);
   console.log(`Seeded 4 tournament participants (1 internal, 3 external) across 2 groups.`);
   console.log(`Seeded 1 tournament venue assignment and 1 manual tournament match.`);
+
+  // Phase 12: a SECOND, separate demo tournament specifically for
+  // demonstrating/E2E-testing the automatic schedule generator —
+  // deliberately NOT the Phase 11 "Verevia Jugendcup 2026" above, which
+  // already carries a manually-created tournament match (and the schedule
+  // generator refuses to commit for a tournament that already has one, see
+  // TournamentScheduleService.commit). Participants + one group, but no
+  // matches, so the generator's preview/commit flow is actually
+  // demonstrable end-to-end against seed data. Idempotent like the rest of
+  // this file.
+  let scheduleDemoTournament = await db.footballTournament.findFirst({
+    where: { tenantId: tenant.id, departmentId: department.id, name: "Verevia Frühjahrscup 2026" },
+  });
+  if (!scheduleDemoTournament) {
+    scheduleDemoTournament = await db.footballTournament.create({
+      data: {
+        tenantId: tenant.id,
+        departmentId: department.id,
+        seasonId: season.id,
+        name: "Verevia Frühjahrscup 2026",
+        description: "Fiktives Turnier zur Demonstration der automatischen Spielplanerstellung.",
+        startsAt: new Date("2026-11-14T09:00:00.000Z"), // 10:00 Europe/Berlin (CET)
+        endsAt: new Date("2026-11-14T17:00:00.000Z"), // 18:00 Europe/Berlin (CET)
+        status: "PLANNED",
+        mode: "GROUPS",
+      },
+    });
+  }
+
+  const e2TeamSeason = teamSeasonsByTeamName.get("E2")!;
+
+  async function ensureDemoInternalParticipant(teamSeasonId: string) {
+    let participant = await db.tournamentParticipant.findFirst({
+      where: { tenantId: tenant.id, tournamentId: scheduleDemoTournament!.id, teamSeasonId },
+    });
+    if (!participant) {
+      participant = await db.tournamentParticipant.create({
+        data: { tenantId: tenant.id, tournamentId: scheduleDemoTournament!.id, teamSeasonId },
+      });
+    }
+    return participant;
+  }
+
+  async function ensureDemoExternalParticipant(externalName: string) {
+    let participant = await db.tournamentParticipant.findFirst({
+      where: { tenantId: tenant.id, tournamentId: scheduleDemoTournament!.id, externalName },
+    });
+    if (!participant) {
+      participant = await db.tournamentParticipant.create({
+        data: { tenantId: tenant.id, tournamentId: scheduleDemoTournament!.id, externalName },
+      });
+    }
+    return participant;
+  }
+
+  const demoParticipantE2 = await ensureDemoInternalParticipant(e2TeamSeason.id);
+  const demoParticipantAlpha = await ensureDemoExternalParticipant("SV Frühjahrsstart");
+  const demoParticipantBeta = await ensureDemoExternalParticipant("FC Platzhirsch");
+  const demoParticipantGamma = await ensureDemoExternalParticipant("TSV Kickfreunde");
+
+  let scheduleDemoGroup = await db.tournamentGroup.findFirst({
+    where: { tenantId: tenant.id, tournamentId: scheduleDemoTournament.id, name: "Gruppe A" },
+  });
+  if (!scheduleDemoGroup) {
+    scheduleDemoGroup = await db.tournamentGroup.create({
+      data: { tenantId: tenant.id, tournamentId: scheduleDemoTournament.id, name: "Gruppe A", displayOrder: 1 },
+    });
+  }
+
+  for (const participant of [demoParticipantE2, demoParticipantAlpha, demoParticipantBeta, demoParticipantGamma]) {
+    if (participant.groupId !== scheduleDemoGroup.id) {
+      await db.tournamentParticipant.update({ where: { id: participant.id }, data: { groupId: scheduleDemoGroup.id } });
+    }
+  }
+
+  const existingDemoTournamentVenue = await db.tournamentVenue.findFirst({
+    where: { tenantId: tenant.id, tournamentId: scheduleDemoTournament.id, venueId: venue.id },
+  });
+  if (!existingDemoTournamentVenue) {
+    await db.tournamentVenue.create({
+      data: { tenantId: tenant.id, tournamentId: scheduleDemoTournament.id, venueId: venue.id, displayOrder: 1 },
+    });
+  }
+
+  console.log(`Seeded tournament "${scheduleDemoTournament.name}" (${scheduleDemoTournament.id})`);
+  console.log(`Seeded 4 participants in 1 group, 1 venue assignment, deliberately NO matches (schedule generator demo).`);
 }
 
 main()

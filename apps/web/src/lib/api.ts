@@ -4,7 +4,7 @@ const API_URL = process.env.API_URL ?? "http://localhost:3001";
 
 export type ApiResult<T> =
   | { ok: true; data: T }
-  | { ok: false; status: 401 | 403 | 404 | 400 | number };
+  | { ok: false; status: 401 | 403 | 404 | 400 | number; message?: string };
 
 /**
  * Server-side fetch against apps/api, forwarding the incoming request's
@@ -36,7 +36,16 @@ export async function apiFetch<T>(
   });
 
   if (!response.ok) {
-    return { ok: false, status: response.status };
+    // Best-effort: most callers only check `.ok`/`.status` (existing
+    // convention), but a few interactive flows (e.g. the schedule
+    // generator) need the actual NestJS error message to show the user
+    // why a request was rejected, rather than a generic status code.
+    const message = await response
+      .clone()
+      .json()
+      .then((body: unknown) => (body && typeof body === "object" && "message" in body && typeof body.message === "string" ? body.message : undefined))
+      .catch(() => undefined);
+    return { ok: false, status: response.status, message };
   }
   if (response.status === 204) {
     return { ok: true, data: undefined as T };

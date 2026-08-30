@@ -122,3 +122,43 @@ export function getTenantPrisma(tenantId: string): PrismaClient {
 
   return extended as unknown as PrismaClient;
 }
+
+/**
+ * Runs `callback` inside a SINGLE tenant-scoped, RLS-enforcing Postgres
+ * transaction — added in Phase 12 for the tournament schedule commit,
+ * the first place in the codebase that genuinely needs several
+ * tenant-scoped writes/reads to be atomic *together* (row-lock the
+ * tournament, re-check for an existing schedule, insert every generated
+ * match) rather than each individually atomic.
+ *
+ * `getTenantPrisma()` above deliberately wraps every single Prisma Client
+ * call in its OWN `$transaction` — correct and sufficient for the vast
+ * majority of call sites, but not composable: calling a second operation
+ * on that extended client from inside an already-open transaction opens
+ * an unrelated, second transaction on the underlying (non-extended)
+ * `prisma` singleton instead of continuing the caller's transaction, so
+ * multi-statement atomicity cannot be built on top of it. Rather than
+ * changing `getTenantPrisma()`'s behavior for every existing call site,
+ * this is an additive sibling: it opens exactly one interactive
+ * transaction, sets `app.tenant_id` once at the start (same
+ * `set_config(..., true)` — i.e. `SET LOCAL` — mechanism, on the same
+ * connection), and hands the raw transaction client to the callback so
+ * it can perform multiple tenant-scoped operations against it directly.
+ * RLS is enforced identically to `getTenantPrisma()` — the guarantee
+ * RLS actually depends on is "the SET LOCAL and the query run on the
+ * same connection/transaction", which holds here by construction.
+ *
+ * See docs/architecture/adr/0009-tenant-scoped-multi-statement-transactions.md.
+ */
+export async function withTenantTransaction<T>(
+  tenantId: string,
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  if (!tenantId) {
+    throw new Error("withTenantTransaction() requires a non-empty tenantId.");
+  }
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    return callback(tx);
+  });
+}
