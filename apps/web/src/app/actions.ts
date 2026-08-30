@@ -467,6 +467,63 @@ export async function commitTournamentScheduleAction(
   redirect(`/fussball/turniere/${tournamentId}`);
 }
 
+export type KnockoutEntrantInput = { type: "TEAM"; participantId: string } | { type: "GROUP_POSITION"; groupId: string; position: number };
+
+export interface KnockoutSettingsInput {
+  entrants: KnockoutEntrantInput[];
+  includeThirdPlace: boolean;
+  matchDurationMinutes: number;
+  changeoverMinutes: number;
+  minimumRestMinutes: number;
+  venueIds: string[];
+  schedulingStartsAt?: string;
+}
+
+/**
+ * Same "not bound to a form action" shape as previewTournamentScheduleAction
+ * — called imperatively from TournamentKnockoutGenerator so the bracket
+ * preview can render without a full page navigation. A preview never writes
+ * to the database (see PHASE_13 report).
+ */
+export async function previewTournamentKnockoutAction(
+  tournamentId: string,
+  settings: KnockoutSettingsInput,
+): Promise<ScheduleActionResult<unknown>> {
+  const tenantId = await requireTenantId();
+  const result = await apiFetch(`/api/v1/football/tournaments/${tournamentId}/knockout/preview`, tenantId, {
+    method: "POST",
+    body: JSON.stringify(settings),
+  });
+  if (!result.ok) {
+    return { ok: false, status: result.status, message: result.message };
+  }
+  return { ok: true, data: result.data };
+}
+
+/**
+ * Persists the previewed knockout bracket — same settings plus the
+ * fingerprint from the last preview call (server re-validates and
+ * re-generates from fresh data before writing anything, see
+ * TournamentKnockoutService.commit). On success, redirects back to the
+ * tournament detail page, same pattern as commitTournamentScheduleAction.
+ */
+export async function commitTournamentKnockoutAction(
+  tournamentId: string,
+  settings: KnockoutSettingsInput,
+  fingerprint: string,
+): Promise<ScheduleActionResult<unknown>> {
+  const tenantId = await requireTenantId();
+  const result = await apiFetch(`/api/v1/football/tournaments/${tournamentId}/knockout/commit`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ ...settings, fingerprint }),
+  });
+  if (!result.ok) {
+    return { ok: false, status: result.status, message: result.message };
+  }
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+  redirect(`/fussball/turniere/${tournamentId}`);
+}
+
 export async function createTournamentMatchAction(tournamentId: string, formData: FormData) {
   const tenantId = await requireTenantId();
   const homeParticipantId = String(formData.get("homeParticipantId") ?? "");

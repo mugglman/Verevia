@@ -46,6 +46,7 @@ describe("tenant-scoped model derivation", () => {
         "TournamentParticipant",
         "TournamentVenue",
         "TournamentGroup",
+        "TournamentMatchSlot",
       ].sort(),
     );
   });

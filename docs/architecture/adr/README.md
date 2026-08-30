@@ -22,3 +22,4 @@ Jede wesentliche architektonische Entscheidung wird als eigenes ADR-Dokument fes
 - [0007 – API-Versionierung](./0007-api-versioning.md) — ACCEPTED
 - [0008 – Turnierspiele erweitern FootballMatch](./0008-tournament-match-model.md) — ACCEPTED
 - [0009 – Tenant-gebundene Mehrfach-Statement-Transaktionen](./0009-tenant-scoped-multi-statement-transactions.md) — ACCEPTED
+- [0010 – Pending KO-Spielteilnehmer als TournamentMatchSlot](./0010-knockout-pending-match-slots.md) — ACCEPTED

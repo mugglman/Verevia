@@ -37,6 +37,14 @@ export const SCHEDULE_GENERATION_LIMITS = {
   maxGeneratedMatches: 500,
   /** Hard cap on how many time slots the scheduler will ever consider before giving up on a fixture. */
   maxSlotSearchIndex: 2000,
+  /**
+   * Phase 13: max entrants for an automatically generated knockout bracket.
+   * 16 = the largest bracket size explicitly required by the work order
+   * (Round of 16 / "Achtelfinale") — the bracket generator itself is fully
+   * generic for any power-of-two size, this limit exists purely as a
+   * guardrail, not because larger sizes need special-casing.
+   */
+  maxKnockoutEntrants: 16,
 } as const;
 
 export const GENERATOR_VERSION = "tournament-round-robin-v1";
