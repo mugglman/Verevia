@@ -503,6 +503,77 @@ async function main() {
 
   console.log(`Seeded tournament "${scheduleDemoTournament.name}" (${scheduleDemoTournament.id})`);
   console.log(`Seeded 4 participants in 1 group, 1 venue assignment, deliberately NO matches (schedule generator demo).`);
+
+  // Phase 13: a THIRD, separate demo tournament specifically for
+  // demonstrating/E2E-testing the automatic knockout/final-round bracket
+  // generator — deliberately NOT the Phase 11 or Phase 12 tournaments above,
+  // both of which already carry committed data (a manual match resp. a
+  // committed round-robin schedule) that the "one schedule per tournament"
+  // guard would block a knockout commit against (see
+  // TournamentKnockoutService.commit). KNOCKOUT mode, 4 direct-team
+  // entrants (1 internal + 3 external, no groups — mode B "reines
+  // Knockout-Turnier" from the Phase 13 spec), one venue assignment,
+  // deliberately NO matches, so the preview/commit flow is demonstrable
+  // end-to-end against seed data. Idempotent like the rest of this file.
+  let knockoutDemoTournament = await db.footballTournament.findFirst({
+    where: { tenantId: tenant.id, departmentId: department.id, name: "Verevia Pokal 2026" },
+  });
+  if (!knockoutDemoTournament) {
+    knockoutDemoTournament = await db.footballTournament.create({
+      data: {
+        tenantId: tenant.id,
+        departmentId: department.id,
+        seasonId: season.id,
+        name: "Verevia Pokal 2026",
+        description: "Fiktives Turnier zur Demonstration des automatischen KO-Baum-Generators.",
+        startsAt: new Date("2026-12-05T09:00:00.000Z"), // 10:00 Europe/Berlin (CET)
+        endsAt: new Date("2026-12-05T18:00:00.000Z"), // 19:00 Europe/Berlin (CET)
+        status: "PLANNED",
+        mode: "KNOCKOUT",
+      },
+    });
+  }
+
+  async function ensureKnockoutInternalParticipant(teamSeasonId: string) {
+    let participant = await db.tournamentParticipant.findFirst({
+      where: { tenantId: tenant.id, tournamentId: knockoutDemoTournament!.id, teamSeasonId },
+    });
+    if (!participant) {
+      participant = await db.tournamentParticipant.create({
+        data: { tenantId: tenant.id, tournamentId: knockoutDemoTournament!.id, teamSeasonId },
+      });
+    }
+    return participant;
+  }
+
+  async function ensureKnockoutExternalParticipant(externalName: string) {
+    let participant = await db.tournamentParticipant.findFirst({
+      where: { tenantId: tenant.id, tournamentId: knockoutDemoTournament!.id, externalName },
+    });
+    if (!participant) {
+      participant = await db.tournamentParticipant.create({
+        data: { tenantId: tenant.id, tournamentId: knockoutDemoTournament!.id, externalName },
+      });
+    }
+    return participant;
+  }
+
+  await ensureKnockoutInternalParticipant(e1TeamSeason.id);
+  await ensureKnockoutExternalParticipant("SV Pokaljäger");
+  await ensureKnockoutExternalParticipant("FC Endspielstadt");
+  await ensureKnockoutExternalParticipant("TSV Siegerfeld");
+
+  const existingKnockoutTournamentVenue = await db.tournamentVenue.findFirst({
+    where: { tenantId: tenant.id, tournamentId: knockoutDemoTournament.id, venueId: venue.id },
+  });
+  if (!existingKnockoutTournamentVenue) {
+    await db.tournamentVenue.create({
+      data: { tenantId: tenant.id, tournamentId: knockoutDemoTournament.id, venueId: venue.id, displayOrder: 1 },
+    });
+  }
+
+  console.log(`Seeded tournament "${knockoutDemoTournament.name}" (${knockoutDemoTournament.id})`);
+  console.log(`Seeded 4 direct-team participants, 1 venue assignment, deliberately NO matches (knockout generator demo).`);
 }
 
 main()

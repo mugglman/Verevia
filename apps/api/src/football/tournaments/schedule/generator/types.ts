@@ -64,7 +64,15 @@ export interface ScheduleConflict {
     | "VENUE_OVERLAP"
     | "REST_VIOLATION"
     | "TOURNAMENT_END_EXCEEDED"
-    | "INVALID_MATCH";
+    | "INVALID_MATCH"
+    // Phase 13 (knockout) additions:
+    | "SELF_REFERENCE"
+    | "UNKNOWN_MATCH_REFERENCE"
+    | "DEPENDENCY_CYCLE"
+    | "DEPENDENCY_ROUND_ORDER"
+    | "DUPLICATE_ENTRANT"
+    | "TOO_FEW_ENTRANTS"
+    | "THIRD_PLACE_UNSUPPORTED";
   /** German, human-readable — safe to render directly in the UI (see section 35). */
   message: string;
 }

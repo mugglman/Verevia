@@ -15,7 +15,16 @@
 // FootballTournament/TournamentParticipant/TournamentVenue/TournamentGroup
 // (Turnier-Grundmodell, kein automatischer Spielplan/Bracket-Generator)
 // kamen in Phase 11 hinzu, siehe docs/PHASE_11_TOURNAMENT_CORE_REPORT.md
-// und docs/architecture/adr/0008-tournament-match-model.md.
+// und docs/architecture/adr/0008-tournament-match-model.md. Der
+// automatische Gruppenphasen-Spielplan (Round-Robin, keine neue Tabelle)
+// kam in Phase 12 hinzu, siehe
+// docs/PHASE_12_TOURNAMENT_SCHEDULE_GENERATOR_REPORT.md und
+// docs/architecture/adr/0009-tenant-scoped-multi-statement-transactions.md.
+// TournamentMatchSlot (KO-/Finalrunden-Grundfundament — beschreibt noch
+// nicht aufgelöste Spielteilnehmer wie "Sieger Halbfinale 1", noch keine
+// automatische Auflösung nach Ergebnissen) kam in Phase 13 hinzu, siehe
+// docs/PHASE_13_TOURNAMENT_KNOCKOUT_GENERATOR_REPORT.md und
+// docs/architecture/adr/0010-knockout-pending-match-slots.md.
 // Prisma ist absichtlich auf ^6.x gepinnt (nicht 7), siehe
 // docs/architecture/adr/0002-authentication-strategy.md.
 //
@@ -177,6 +186,27 @@ enum MatchStatus {
   POSTPONED
   CANCELLED
   COMPLETED
+}
+
+/// Welche Seite eines Turnier-KO-Spiels ein `TournamentMatchSlot` beschreibt
+/// (Phase 13). Bewusst getrennt von `MatchHomeAway` — dort geht es um die
+/// tatsächliche Heim-/Auswärts-/Neutral-Zuordnung eines aufgelösten Spiels,
+/// hier nur darum, WELCHE der beiden Fixture-Seiten (home/away) noch auf
+/// eine spätere Auflösung wartet.
+enum MatchSlotSide {
+  HOME
+  AWAY
+}
+
+/// Woher der Teilnehmer einer noch nicht aufgelösten KO-Spiel-Seite kommen
+/// wird (Phase 13). `TEAM`-Quellen sind bewusst NICHT Teil dieses Enums —
+/// sie sind sofort auflösbar (der Teilnehmer ist bereits bekannt) und
+/// werden direkt in `FootballMatch.home`/`awayParticipantId` gesetzt, ohne
+/// einen `TournamentMatchSlot`-Datensatz zu benötigen. Siehe ADR 0010.
+enum MatchSlotSourceType {
+  GROUP_POSITION
+  WINNER_OF_MATCH
+  LOSER_OF_MATCH
 }
 
 /// Schlanker Lebenszyklus eines Turniers (Phase 11) — bewusst keine
@@ -346,6 +376,7 @@ model Tenant {
   tournamentParticipants TournamentParticipant[]
   tournamentVenues       TournamentVenue[]
   tournamentGroups       TournamentGroup[]
+  tournamentMatchSlots   TournamentMatchSlot[]
 
   @@map("tenant")
 }
@@ -953,6 +984,13 @@ model FootballMatch {
   // zusätzliche Drei-Spalten-Unique auf TournamentGroup/TournamentParticipant
   // erzwingt damit strukturell, dass Gruppe und Teilnehmer tatsächlich zu
   // GENAU diesem Turnier gehören, ohne eigenen Trigger.
+  //
+  // Seit Phase 13 (ADR 0010) dürfen `homeParticipantId`/`awayParticipantId`
+  // im Turniermatch-Modus zusätzlich BEIDE oder EINZELN NULL sein — für ein
+  // KO-Spiel, dessen Teilnehmer noch nicht feststeht (z. B. "Sieger
+  // Halbfinale 1"). Die gelockerte `football_match_mode_consistency`-CHECK
+  // erlaubt das; welche Seite auf welche Weise noch aufzulösen ist, steht
+  // dann in einem zugehörigen `TournamentMatchSlot`-Datensatz (siehe dort).
   tournamentId      String?
   tournament        FootballTournament?    @relation(fields: [tenantId, tournamentId], references: [tenantId, id], onDelete: Restrict)
   tournamentGroupId String?
@@ -962,6 +1000,10 @@ model FootballMatch {
   awayParticipantId String?
   awayParticipant   TournamentParticipant? @relation("AwayParticipant", fields: [tenantId, tournamentId, awayParticipantId], references: [tenantId, tournamentId, id], onDelete: Restrict)
 
+  slotsAsOwner  TournamentMatchSlot[] @relation("MatchSlotOwner")
+  slotsAsSource TournamentMatchSlot[] @relation("MatchSlotSource")
+
+  @@unique([tenantId, tournamentId, id])
   @@index([tenantId])
   @@index([teamSeasonId])
   @@index([venueId])
@@ -1020,6 +1062,7 @@ model FootballTournament {
   venues       TournamentVenue[]
   groups       TournamentGroup[]
   matches      FootballMatch[]
+  matchSlots   TournamentMatchSlot[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -1132,6 +1175,7 @@ model TournamentGroup {
 
   participants TournamentParticipant[]
   matches      FootballMatch[]
+  matchSlots   TournamentMatchSlot[]
 
   // Drei-Spalten-Unique — Composite-FK-Ziel für FootballMatch.tournamentGroupId
   // und TournamentParticipant.groupId (siehe ADR 0008).
@@ -1140,4 +1184,57 @@ model TournamentGroup {
   @@index([tenantId])
   @@index([tournamentId])
   @@map("tournament_group")
+}
+
+/// Beschreibt, woher der Heim- oder Auswärts-Teilnehmer einer noch nicht
+/// aufgelösten KO-Spiel-Seite kommen wird (Phase 13) — z. B. "Sieger
+/// Halbfinale 1" (`WINNER_OF_MATCH`, `sourceMatchId` = SF-1) oder "Gruppe A,
+/// Platz 2" (`GROUP_POSITION`, `groupId` = Gruppe A, `groupPosition` = 2).
+/// Existiert NUR für Seiten ohne bereits bekannten `TournamentParticipant`
+/// — direkte Team-Quellen brauchen keine Zeile hier, siehe
+/// `MatchSlotSourceType`. Phase 13 löst diese Quellen noch nicht auf (keine
+/// Live-Ergebnisverarbeitung, siehe Auftrag Abschnitt 28) — die Struktur
+/// verliert die Information dabei aber nicht. Ausführliche Begründung:
+/// [ADR 0010](../../../docs/architecture/adr/0010-knockout-pending-match-slots.md).
+model TournamentMatchSlot {
+  id           String             @id @default(uuid())
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tournamentId String
+  tournament   FootballTournament @relation(fields: [tenantId, tournamentId], references: [tenantId, id], onDelete: Restrict)
+
+  matchId String
+  // Composite FK über (tenantId, tournamentId, matchId) — erzwingt, dass
+  // das Spiel, zu dem dieser Slot gehört, tatsächlich zu GENAU diesem
+  // Turnier gehört (gleiches Composite-FK-Muster wie ADR 0008).
+  match   FootballMatch @relation("MatchSlotOwner", fields: [tenantId, tournamentId, matchId], references: [tenantId, tournamentId, id], onDelete: Cascade)
+
+  side       MatchSlotSide
+  sourceType MatchSlotSourceType
+
+  // Nur bei sourceType = GROUP_POSITION gesetzt. groupPosition ist 1-basiert
+  // (1 = Gruppenerster). Composite FK erzwingt dieselbe Turnierzugehörigkeit.
+  groupId       String?
+  group         TournamentGroup? @relation(fields: [tenantId, tournamentId, groupId], references: [tenantId, tournamentId, id], onDelete: Restrict)
+  groupPosition Int?
+
+  // Nur bei sourceType = WINNER_OF_MATCH / LOSER_OF_MATCH gesetzt — auch
+  // hier über (tenantId, tournamentId, sourceMatchId), erzwingt dieselbe
+  // Turnierzugehörigkeit für das referenzierte Vorgängerspiel. Bewusst
+  // `onDelete: Restrict` (kein `SetNull`) — dieselbe Begründung wie bei
+  // `TournamentParticipant.group` (ADR 0008): `tenantId`/`tournamentId`
+  // sind Teil dieser Composite-FK und selbst NOT NULL, `SetNull` würde also
+  // versuchen, auch sie zu leeren.
+  sourceMatchId String?
+  sourceMatch   FootballMatch? @relation("MatchSlotSource", fields: [tenantId, tournamentId, sourceMatchId], references: [tenantId, tournamentId, id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, matchId, side])
+  @@index([tenantId])
+  @@index([tournamentId])
+  @@index([matchId])
+  @@index([groupId])
+  @@index([sourceMatchId])
+  @@map("tournament_match_slot")
 }
