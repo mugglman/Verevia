@@ -1,6 +1,6 @@
 export * from "@prisma/client";
 export { prisma } from "./client";
-export { getTenantPrisma } from "./tenant-prisma";
+export { getTenantPrisma, withTenantTransaction } from "./tenant-prisma";
 export {
   runWithTenantContext,
   getTenantContext,

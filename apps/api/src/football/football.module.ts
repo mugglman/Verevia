@@ -11,6 +11,8 @@ import { ParticipantsService } from "./tournaments/participants/participants.ser
 import { TournamentGroupsController } from "./tournaments/groups/tournament-groups.controller";
 import { TournamentGroupsService } from "./tournaments/groups/tournament-groups.service";
 import { TournamentMatchesController } from "./tournaments/matches/tournament-matches.controller";
+import { TournamentScheduleController } from "./tournaments/schedule/tournament-schedule.controller";
+import { TournamentScheduleService } from "./tournaments/schedule/tournament-schedule.service";
 import { TournamentVenuesController } from "./tournaments/venues/tournament-venues.controller";
 import { TournamentVenuesService } from "./tournaments/venues/tournament-venues.service";
 import { TournamentsController } from "./tournaments/tournaments.controller";
@@ -27,6 +29,7 @@ import { TournamentsService } from "./tournaments/tournaments.service";
     TournamentVenuesController,
     TournamentGroupsController,
     TournamentMatchesController,
+    TournamentScheduleController,
   ],
   providers: [
     AgeGroupsService,
@@ -36,6 +39,7 @@ import { TournamentsService } from "./tournaments/tournaments.service";
     ParticipantsService,
     TournamentVenuesService,
     TournamentGroupsService,
+    TournamentScheduleService,
   ],
 })
 export class FootballModule {}

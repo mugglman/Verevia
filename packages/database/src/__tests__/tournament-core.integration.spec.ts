@@ -593,3 +593,118 @@ describe("PostgreSQL RLS — tenant isolation (tournament core)", () => {
     expect(stillA?.name).toBe("Test-Cup A");
   });
 });
+
+describe("FootballMatch createMany — atomicity (Phase 12 schedule commit foundation)", () => {
+  // The schedule generator persists a whole generated schedule via a
+  // single `footballMatch.createMany(...)` call inside one DB transaction
+  // (see ADR 0009 / TournamentScheduleService.commit) rather than N
+  // separate `create()` calls, specifically so that either ALL generated
+  // matches are persisted or NONE are. A single multi-row Postgres INSERT
+  // is atomic by itself — this test proves that directly against a real
+  // PostgreSQL instance: a batch with one deliberately invalid row (a
+  // self-match, violating football_match_mode_consistency) must leave
+  // ZERO rows behind, not the N-1 valid ones.
+  let groupId: string;
+  let participantIds: string[];
+
+  beforeAll(async () => {
+    const db = getTenantPrisma(tenantAId);
+    const group = await db.tournamentGroup.create({
+      data: { tenantId: tenantAId, tournamentId: tournamentAId, name: `Atomicity-Test-${Date.now()}` },
+    });
+    groupId = group.id;
+    const names = ["Atomicity A", "Atomicity B", "Atomicity C"];
+    const participants = await Promise.all(
+      names.map((externalName) =>
+        db.tournamentParticipant.create({
+          data: { tenantId: tenantAId, tournamentId: tournamentAId, externalName: `${externalName}-${Date.now()}`, groupId },
+        }),
+      ),
+    );
+    participantIds = participants.map((p) => p.id);
+  });
+
+  it("a createMany batch with one invalid row inserts ZERO rows, not the valid ones", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const [a, b, c] = participantIds;
+    const startsAt = new Date("2026-10-03T09:00:00.000Z");
+
+    await expect(
+      db.footballMatch.createMany({
+        data: [
+          {
+            tenantId: tenantAId,
+            tournamentId: tournamentAId,
+            tournamentGroupId: groupId,
+            homeParticipantId: a!,
+            awayParticipantId: b!,
+            startsAt,
+            type: "TOURNAMENT",
+            homeAway: "NEUTRAL",
+          },
+          {
+            tenantId: tenantAId,
+            tournamentId: tournamentAId,
+            tournamentGroupId: groupId,
+            homeParticipantId: b!,
+            awayParticipantId: c!,
+            startsAt,
+            type: "TOURNAMENT",
+            homeAway: "NEUTRAL",
+          },
+          // Deliberately invalid: a participant playing against itself —
+          // violates football_match_mode_consistency's home != away check.
+          {
+            tenantId: tenantAId,
+            tournamentId: tournamentAId,
+            tournamentGroupId: groupId,
+            homeParticipantId: c!,
+            awayParticipantId: c!,
+            startsAt,
+            type: "TOURNAMENT",
+            homeAway: "NEUTRAL",
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+
+    const count = await db.footballMatch.count({ where: { tournamentId: tournamentAId, tournamentGroupId: groupId } });
+    expect(count).toBe(0);
+  });
+
+  it("a fully valid createMany batch inserts all rows together", async () => {
+    const db = getTenantPrisma(tenantAId);
+    const [a, b, c] = participantIds;
+    const startsAt = new Date("2026-10-03T09:00:00.000Z");
+
+    await db.footballMatch.createMany({
+      data: [
+        {
+          tenantId: tenantAId,
+          tournamentId: tournamentAId,
+          tournamentGroupId: groupId,
+          homeParticipantId: a!,
+          awayParticipantId: b!,
+          startsAt,
+          type: "TOURNAMENT",
+          homeAway: "NEUTRAL",
+        },
+        {
+          tenantId: tenantAId,
+          tournamentId: tournamentAId,
+          tournamentGroupId: groupId,
+          homeParticipantId: b!,
+          awayParticipantId: c!,
+          startsAt: new Date(startsAt.getTime() + 12 * 60_000),
+          type: "TOURNAMENT",
+          homeAway: "NEUTRAL",
+        },
+      ],
+    });
+
+    const count = await db.footballMatch.count({ where: { tournamentId: tournamentAId, tournamentGroupId: groupId } });
+    expect(count).toBe(2);
+
+    await adminPrisma.footballMatch.deleteMany({ where: { tournamentId: tournamentAId, tournamentGroupId: groupId } });
+  });
+});

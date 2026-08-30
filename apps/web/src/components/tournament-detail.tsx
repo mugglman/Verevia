@@ -464,6 +464,14 @@ export function TournamentDetail({
       {/* Spiele */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium uppercase tracking-wide text-neutral-500">Spiele</h2>
+        {tournament.canEdit && matches.length === 0 && (
+          <Link
+            href={`/fussball/turniere/${tournament.id}/spielplan`}
+            className="inline-block rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          >
+            Spielplan erstellen
+          </Link>
+        )}
         {matches.length === 0 ? (
           <p className="rounded-xl border border-dashed border-neutral-300 p-6 text-center text-sm text-neutral-500">
             Noch keine Spiele angelegt.

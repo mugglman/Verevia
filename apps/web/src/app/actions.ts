@@ -403,6 +403,70 @@ export async function removeTournamentVenueAction(tournamentId: string, venueId:
   revalidatePath(`/fussball/turniere/${tournamentId}`);
 }
 
+export interface ScheduleSettingsInput {
+  matchDurationMinutes: number;
+  changeoverMinutes: number;
+  minimumRestMinutes: number;
+  venueIds: string[];
+  schedulingStartsAt?: string;
+}
+
+export interface ScheduleActionResult<T> {
+  ok: boolean;
+  status?: number;
+  message?: string;
+  data?: T;
+}
+
+/**
+ * Unlike every other action in this file, this one isn't bound to a
+ * `<form action={...}>` — it's called imperatively from the schedule
+ * generator's client component (`TournamentScheduleGenerator`) so the
+ * preview result can be rendered without a full page navigation. Returns
+ * the API response directly rather than revalidating/redirecting: a
+ * preview never writes to the database (see PHASE_12 report).
+ */
+export async function previewTournamentScheduleAction(
+  tournamentId: string,
+  settings: ScheduleSettingsInput,
+): Promise<ScheduleActionResult<unknown>> {
+  const tenantId = await requireTenantId();
+  const result = await apiFetch(`/api/v1/football/tournaments/${tournamentId}/schedule/preview`, tenantId, {
+    method: "POST",
+    body: JSON.stringify(settings),
+  });
+  if (!result.ok) {
+    return { ok: false, status: result.status, message: result.message };
+  }
+  return { ok: true, data: result.data };
+}
+
+/**
+ * Persists the previewed schedule — same settings plus the fingerprint the
+ * client received from its last preview call (server re-validates and
+ * re-generates from fresh data before writing anything, see
+ * TournamentScheduleService.commit). On success, redirects back to the
+ * tournament detail page (same "own page + redirect after mutation"
+ * pattern as createTournamentAction/createMatchAction) so the newly
+ * persisted matches are visible immediately.
+ */
+export async function commitTournamentScheduleAction(
+  tournamentId: string,
+  settings: ScheduleSettingsInput,
+  fingerprint: string,
+): Promise<ScheduleActionResult<unknown>> {
+  const tenantId = await requireTenantId();
+  const result = await apiFetch(`/api/v1/football/tournaments/${tournamentId}/schedule/commit`, tenantId, {
+    method: "POST",
+    body: JSON.stringify({ ...settings, fingerprint }),
+  });
+  if (!result.ok) {
+    return { ok: false, status: result.status, message: result.message };
+  }
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+  redirect(`/fussball/turniere/${tournamentId}`);
+}
+
 export async function createTournamentMatchAction(tournamentId: string, formData: FormData) {
   const tenantId = await requireTenantId();
   const homeParticipantId = String(formData.get("homeParticipantId") ?? "");
