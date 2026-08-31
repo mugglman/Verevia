@@ -42,10 +42,26 @@ export interface TournamentDetailParticipant {
   seed: number | null;
 }
 
+export interface TournamentDetailGroupStandingsRow {
+  participantId: string;
+  rank: number;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  tiedRankGroupSize: number;
+}
+
 export interface TournamentDetailGroup {
   id: string;
   name: string;
   displayOrder: number;
+  standings: TournamentDetailGroupStandingsRow[];
+  isComplete: boolean;
 }
 
 export interface TournamentDetailVenue {
@@ -361,19 +377,79 @@ export function TournamentDetail({
             Noch keine Gruppen angelegt.
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {groups.map((group) => (
-              <li key={group.id} className="rounded-2xl border border-neutral-200 bg-white p-3">
-                <span className="font-medium text-[var(--color-dark)]">{group.name}</span>
-                <ul className="mt-1 space-y-0.5 text-sm text-neutral-500">
-                  {activeParticipants
-                    .filter((p) => p.groupId === group.id)
-                    .map((p) => (
-                      <li key={p.id}>{participantLabel(p)}</li>
-                    ))}
-                </ul>
-              </li>
-            ))}
+          // Stacked single-column (not a 2-up grid) — a group's standings
+          // table needs its own full width to stay readable on mobile,
+          // same "no horizontal monster" reasoning as the KO bracket view.
+          <ul className="space-y-3">
+            {groups.map((group) => {
+              const hasStandings = group.standings.length > 0 && group.standings.some((row) => row.played > 0);
+              const hasTie = group.standings.some((row) => row.tiedRankGroupSize > 1);
+              return (
+                <li key={group.id} className="rounded-2xl border border-neutral-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-[var(--color-dark)]">{group.name}</span>
+                    {hasStandings && (
+                      <span className="text-xs text-neutral-500">{group.isComplete ? "Endstand" : "Zwischenstand"}</span>
+                    )}
+                  </div>
+                  {hasStandings ? (
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full min-w-[420px] text-sm">
+                        <thead>
+                          <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                            <th className="py-1.5 pr-2 font-medium">Pos</th>
+                            <th className="px-2 py-1.5 font-medium">Team</th>
+                            <th className="px-2 py-1.5 text-right font-medium">Sp</th>
+                            <th className="px-2 py-1.5 text-right font-medium">S</th>
+                            <th className="px-2 py-1.5 text-right font-medium">U</th>
+                            <th className="px-2 py-1.5 text-right font-medium">N</th>
+                            <th className="px-2 py-1.5 text-right font-medium">Tore</th>
+                            <th className="px-2 py-1.5 text-right font-medium">Diff</th>
+                            <th className="py-1.5 pl-2 text-right font-medium">Pkt</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.standings.map((row) => {
+                            const participant = participants.find((p) => p.id === row.participantId);
+                            return (
+                              <tr key={row.participantId} className="border-b border-neutral-100 last:border-0">
+                                <td className="py-1.5 pr-2 text-neutral-500">
+                                  {row.rank}
+                                  {row.tiedRankGroupSize > 1 ? "*" : ""}
+                                </td>
+                                <td className="px-2 py-1.5 font-medium text-[var(--color-dark)]">
+                                  {participant ? participantLabel(participant) : ""}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">{row.played}</td>
+                                <td className="px-2 py-1.5 text-right">{row.wins}</td>
+                                <td className="px-2 py-1.5 text-right">{row.draws}</td>
+                                <td className="px-2 py-1.5 text-right">{row.losses}</td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {row.goalsFor}:{row.goalsAgainst}
+                                </td>
+                                <td className="px-2 py-1.5 text-right">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
+                                <td className="py-1.5 pl-2 text-right font-semibold">{row.points}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {hasTie && (
+                        <p className="mt-1 text-xs text-neutral-500">* Platzierung sportlich nicht eindeutig (Punktgleichstand)</p>
+                      )}
+                    </div>
+                  ) : (
+                    <ul className="mt-1 space-y-0.5 text-sm text-neutral-500">
+                      {activeParticipants
+                        .filter((p) => p.groupId === group.id)
+                        .map((p) => (
+                          <li key={p.id}>{participantLabel(p)}</li>
+                        ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
 

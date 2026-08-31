@@ -17,7 +17,10 @@ import {
   determineMatchOutcome,
   planSlotResolutions,
   type PendingResultSlot,
+  type SlotResolution,
 } from "../tournaments/schedule/generator/knockout-slot-resolution";
+import { computeGroupStandings, type GroupMatchResult, type GroupStandingsRow } from "../tournaments/schedule/generator/group-standings";
+import { planGroupPositionResolutions, type PendingGroupPositionSlot } from "../tournaments/schedule/generator/group-position-resolution";
 
 /**
  * A FootballMatch is either a club match or a tournament match (see ADR
@@ -496,12 +499,36 @@ export class MatchesService {
     this.assertResultNotLocked(existing, finalStatus, finalHomeScore, finalAwayScore);
 
     return withTenantTransaction(context.tenantId, async (tx) => {
-      // Serializes concurrent finalizations of the SAME match (same
-      // row-lock pattern as ADR 0009) — a second, racing request blocks
-      // here until the first commits, then re-checks against the now-
-      // current state below instead of the possibly-stale `existing` read
-      // before this transaction began.
-      await tx.$queryRaw`SELECT id FROM football_match WHERE id = ${existing.id} FOR UPDATE`;
+      const targetGroupId = dto.tournamentGroupId ?? existing.tournamentGroupId;
+
+      if (targetGroupId) {
+        // This match belongs (or is being assigned) to a group — lock the
+        // group's FULL match set up front, in the same deterministic (id)
+        // order resolveGroupPositionSlots uses below, rather than only
+        // this single row. This must be the very FIRST lock a group-match
+        // update takes: a real PostgreSQL concurrency test (two different
+        // matches of the same group finalized nearly simultaneously)
+        // reproduced a genuine deadlock (40P01) when this row was locked
+        // individually here first and the OTHER match's own individual
+        // lock was exactly the row this transaction's later group-wide
+        // lock (inside resolveGroupPositionSlots) needed next, and vice
+        // versa — a circular wait between the two transactions. Taking
+        // the group-wide lock first means both transactions contend for
+        // the exact same resource in the exact same order, so the second
+        // one simply blocks and waits instead of deadlocking (same
+        // principle as ADR 0009, applied one step earlier). `OR id =
+        // ${existing.id}` also covers the not-yet-a-member case (this
+        // match is being newly assigned into the group by this very
+        // update).
+        await tx.$queryRaw`SELECT id FROM football_match WHERE "tournamentGroupId" = ${targetGroupId} OR id = ${existing.id} ORDER BY id FOR UPDATE`;
+      } else {
+        // Serializes concurrent finalizations of the SAME match (same
+        // row-lock pattern as ADR 0009) — a second, racing request blocks
+        // here until the first commits, then re-checks against the now-
+        // current state below instead of the possibly-stale `existing` read
+        // before this transaction began.
+        await tx.$queryRaw`SELECT id FROM football_match WHERE id = ${existing.id} FOR UPDATE`;
+      }
       const txDb = tx as unknown as PrismaClient;
 
       const fresh = await txDb.footballMatch.findUniqueOrThrow({ where: { id: existing.id } });
@@ -525,6 +552,9 @@ export class MatchesService {
 
       if (updated.status === "COMPLETED") {
         await this.resolveDependentSlots(txDb, updated);
+        if (updated.tournamentGroupId) {
+          await this.resolveGroupPositionSlots(txDb, updated.tournamentGroupId);
+        }
       }
 
       return this.toDto(updated, true);
@@ -583,11 +613,27 @@ export class MatchesService {
       ),
     );
 
+    await this.applySlotResolutions(txDb, planned);
+    await txDb.footballMatch.update({ where: { id: match.id }, data: { resultPropagatedAt: new Date() } });
+  }
+
+  /**
+   * Writes every planned resolution's participant into its target match's
+   * home/away side, then deletes the now-superfluous slot rows. Shared by
+   * resolveDependentSlots (WinnerOfMatch/LoserOfMatch, Phase 14) and
+   * resolveGroupPositionSlots (GROUP_POSITION, Phase 16) — the two differ
+   * only in how they PLAN resolutions (a single source match's outcome vs.
+   * a whole group's standings), not in how a resolution gets applied.
+   */
+  private async applySlotResolutions(txDb: PrismaClient, planned: SlotResolution[]): Promise<void> {
+    if (planned.length === 0) return;
+
     // Lock every distinct target match before writing into it — two
-    // semifinals completing concurrently write DIFFERENT sides of the SAME
-    // Final row; the lock (plus Postgres's own per-statement row locking on
-    // UPDATE) guarantees neither write is lost.
-    const targetMatchIds = [...new Set(planned.map((p) => p.targetMatchId))];
+    // sources completing concurrently (e.g. two semifinals, or a group's
+    // last two matches) can write DIFFERENT sides of the SAME target row;
+    // the lock (plus Postgres's own per-statement row locking on UPDATE)
+    // guarantees neither write is lost.
+    const targetMatchIds = [...new Set(planned.map((p) => p.targetMatchId))].sort();
     for (const targetMatchId of targetMatchIds) {
       await txDb.$queryRaw`SELECT id FROM football_match WHERE id = ${targetMatchId} FOR UPDATE`;
     }
@@ -603,6 +649,70 @@ export class MatchesService {
     }
 
     await txDb.tournamentMatchSlot.deleteMany({ where: { id: { in: planned.map((p) => p.slotId) } } });
-    await txDb.footballMatch.update({ where: { id: match.id }, data: { resultPropagatedAt: new Date() } });
+  }
+
+  /**
+   * Phase 16: after a group-stage match is finalized, checks whether ITS
+   * group is now fully decided (every match COMPLETED) and, if so,
+   * resolves as many pending GROUP_POSITION slots for that group as are
+   * sportingly unambiguous (see group-position-resolution.ts — a genuine
+   * tie is left open, never guessed). Standings are always derived live
+   * from match data, never persisted (see ADR 0012).
+   *
+   * Once at least one slot resolves, EVERY match in the group is locked
+   * (resultPropagatedAt stamped) — not just the one just finalized. This
+   * reuses ADR 0011's existing immutability guard as-is: any of the
+   * group's results could in principle have tipped the now-propagated
+   * standings, so correcting any of them afterwards could silently
+   * desynchronize the already-propagated slot, exactly the inconsistency
+   * ADR 0011 exists to prevent.
+   */
+  private async resolveGroupPositionSlots(txDb: PrismaClient, groupId: string): Promise<void> {
+    // Lock the group's full match set, in the same deterministic (id)
+    // order as updateTournamentMatch's own up-front group lock above —
+    // this is what makes the "last two group matches finalized nearly
+    // simultaneously" race safe: whichever of the two competing
+    // transactions acquires this lock second will, after the first
+    // commits and releases it, re-read a group that's now actually
+    // complete and correctly run the resolution exactly once. Re-locking
+    // here is a harmless no-op for rows this transaction already locked
+    // above (Postgres row locks are held per-transaction, not per
+    // statement) — kept as defense-in-depth so this method stays correct
+    // even if ever called from a path that didn't already take that lock.
+    await txDb.$queryRaw`SELECT id FROM football_match WHERE "tournamentGroupId" = ${groupId} ORDER BY id FOR UPDATE`;
+
+    const groupMatches = await txDb.footballMatch.findMany({ where: { tournamentGroupId: groupId } });
+    if (groupMatches.length === 0 || groupMatches.some((m) => m.status !== "COMPLETED")) return;
+
+    const participantIds = [...new Set(groupMatches.flatMap((m) => [m.homeParticipantId, m.awayParticipantId]))].filter(
+      (id): id is string => id !== null,
+    );
+    const completedResults: GroupMatchResult[] = groupMatches.map((m) => ({
+      homeParticipantId: m.homeParticipantId!,
+      awayParticipantId: m.awayParticipantId!,
+      homeScore: m.homeScore!,
+      awayScore: m.awayScore!,
+    }));
+    const standings: GroupStandingsRow[] = computeGroupStandings(participantIds, completedResults);
+
+    const pendingSlots = await txDb.tournamentMatchSlot.findMany({ where: { groupId, sourceType: "GROUP_POSITION" } });
+    if (pendingSlots.length === 0) return;
+
+    const planned = planGroupPositionResolutions(
+      new Map([[groupId, standings]]),
+      pendingSlots.map(
+        (slot): PendingGroupPositionSlot => ({
+          slotId: slot.id,
+          targetMatchId: slot.matchId,
+          side: slot.side,
+          groupId,
+          groupPosition: slot.groupPosition!,
+        }),
+      ),
+    );
+    if (planned.length === 0) return;
+
+    await this.applySlotResolutions(txDb, planned);
+    await txDb.footballMatch.updateMany({ where: { tournamentGroupId: groupId, resultPropagatedAt: null }, data: { resultPropagatedAt: new Date() } });
   }
 }

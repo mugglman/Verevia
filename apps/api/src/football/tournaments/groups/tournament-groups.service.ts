@@ -8,6 +8,7 @@ import {
 import { getTenantContext, getTenantPrisma, Prisma } from "@verevia/database";
 import { AuthorizationService } from "../../../authorization/authorization.service";
 import { PersonRoleAssignmentsService } from "../../../authorization/person-role-assignments.service";
+import { computeGroupStandings, type GroupMatchResult, type GroupStandingsRow } from "../schedule/generator/group-standings";
 import { CreateTournamentGroupDto } from "./dto/create-tournament-group.dto";
 import { UpdateTournamentGroupDto } from "./dto/update-tournament-group.dto";
 
@@ -17,6 +18,16 @@ export interface TournamentGroupDto {
   name: string;
   displayOrder: number;
   canEdit: boolean;
+  // Phase 16: always DERIVED live from match data, never persisted (ADR
+  // 0012) — empty until the group has at least one participant, all-zero
+  // rows once participants exist but no match is completed yet, and a
+  // genuine sporting tie is reflected via tiedRankGroupSize rather than
+  // silently guessed (see GroupStandingsRow's own doc comment).
+  standings: GroupStandingsRow[];
+  // True once every one of the group's matches is COMPLETED — the table
+  // above is a final result rather than an interim standing. A group with
+  // zero matches yet (not committed) is never "complete".
+  isComplete: boolean;
 }
 
 @Injectable()
@@ -46,8 +57,10 @@ export class TournamentGroupsService {
   private toDto(
     group: { id: string; tournamentId: string; name: string; displayOrder: number },
     canEdit: boolean,
+    standings: GroupStandingsRow[] = [],
+    isComplete = false,
   ): TournamentGroupDto {
-    return { id: group.id, tournamentId: group.tournamentId, name: group.name, displayOrder: group.displayOrder, canEdit };
+    return { id: group.id, tournamentId: group.tournamentId, name: group.name, displayOrder: group.displayOrder, canEdit, standings, isComplete };
   }
 
   async list(tournamentId: string): Promise<TournamentGroupDto[]> {
@@ -63,7 +76,33 @@ export class TournamentGroupsService {
       where: { tournamentId },
       orderBy: { displayOrder: "asc" },
     });
-    return groups.map((g) => this.toDto(g, canEdit));
+
+    // Two tournament-wide queries instead of one per group — standings are
+    // always derived live (ADR 0012), never persisted.
+    const participants = await db.tournamentParticipant.findMany({
+      where: { tournamentId, status: "ACTIVE", groupId: { not: null } },
+      select: { id: true, groupId: true },
+    });
+    const groupMatches = await db.footballMatch.findMany({
+      where: { tournamentId, tournamentGroupId: { not: null } },
+      select: { tournamentGroupId: true, status: true, homeParticipantId: true, awayParticipantId: true, homeScore: true, awayScore: true },
+    });
+
+    return groups.map((g) => {
+      const participantIds = participants.filter((p) => p.groupId === g.id).map((p) => p.id);
+      const matchesForGroup = groupMatches.filter((m) => m.tournamentGroupId === g.id);
+      const isComplete = matchesForGroup.length > 0 && matchesForGroup.every((m) => m.status === "COMPLETED");
+      const completedResults: GroupMatchResult[] = matchesForGroup
+        .filter((m) => m.status === "COMPLETED" && m.homeParticipantId && m.awayParticipantId && m.homeScore != null && m.awayScore != null)
+        .map((m) => ({
+          homeParticipantId: m.homeParticipantId!,
+          awayParticipantId: m.awayParticipantId!,
+          homeScore: m.homeScore!,
+          awayScore: m.awayScore!,
+        }));
+      const standings = computeGroupStandings(participantIds, completedResults);
+      return this.toDto(g, canEdit, standings, isComplete);
+    });
   }
 
   async create(tournamentId: string, dto: CreateTournamentGroupDto): Promise<TournamentGroupDto> {

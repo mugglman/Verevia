@@ -50,7 +50,7 @@ const externalParticipant = {
   seed: null,
 };
 
-const group = { id: "group-1", name: "Gruppe A", displayOrder: 1 };
+const group = { id: "group-1", name: "Gruppe A", displayOrder: 1, standings: [], isComplete: false };
 const venue = { venueId: "venue-1", venueName: "Sportplatz Benediktbeuern", displayOrder: 1, label: "Hauptplatz" };
 const match = {
   id: "match-1",
@@ -139,6 +139,113 @@ describe("TournamentDetail", () => {
     // read-only group label shown next to the assigned participant.
     expect(screen.getAllByText("Gruppe A").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Hauptplatz (Sportplatz Benediktbeuern)")).toBeInTheDocument();
+  });
+
+  it("shows the plain participant list (no table) for a group with no completed matches yet", () => {
+    render(
+      <TournamentDetail
+        tournament={baseTournament}
+        participants={[internalParticipant, externalParticipant]}
+        groups={[group]}
+        venues={[]}
+        matches={[]}
+        availableTeamSeasons={[]}
+        availableVenues={[]}
+      />,
+    );
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // Appears twice: once in the main Teilnehmer list, once in the
+    // group's own fallback participant list — same as the "assigned
+    // participant" test above.
+    expect(screen.getAllByText("E1 (E-Jugend)").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows an interim standings table (Zwischenstand) once at least one group match is completed", () => {
+    const standingsGroup = {
+      ...group,
+      isComplete: false,
+      standings: [
+        { participantId: "participant-1", rank: 1, played: 1, wins: 1, draws: 0, losses: 0, goalsFor: 3, goalsAgainst: 1, goalDifference: 2, points: 3, tiedRankGroupSize: 1 },
+        { participantId: "participant-2", rank: 2, played: 1, wins: 0, draws: 0, losses: 1, goalsFor: 1, goalsAgainst: 3, goalDifference: -2, points: 0, tiedRankGroupSize: 1 },
+      ],
+    };
+    render(
+      <TournamentDetail
+        tournament={baseTournament}
+        participants={[internalParticipant, externalParticipant]}
+        groups={[standingsGroup]}
+        venues={[]}
+        matches={[]}
+        availableTeamSeasons={[]}
+        availableVenues={[]}
+      />,
+    );
+    expect(screen.getByText("Zwischenstand")).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row");
+    // header + 2 data rows
+    expect(rows).toHaveLength(3);
+    expect(within(rows[1]!).getByText("E1 (E-Jugend)")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("3")).toBeInTheDocument(); // points
+    expect(within(rows[1]!).getByText("+2")).toBeInTheDocument(); // goal difference
+    expect(within(rows[2]!).getByText("SV Testhausen")).toBeInTheDocument();
+    expect(within(rows[2]!).getByText("-2")).toBeInTheDocument();
+  });
+
+  it("shows a final standings table (Endstand) once the group is complete", () => {
+    const standingsGroup = {
+      ...group,
+      isComplete: true,
+      standings: [
+        { participantId: "participant-1", rank: 1, played: 1, wins: 1, draws: 0, losses: 0, goalsFor: 2, goalsAgainst: 0, goalDifference: 2, points: 3, tiedRankGroupSize: 1 },
+        { participantId: "participant-2", rank: 2, played: 1, wins: 0, draws: 0, losses: 1, goalsFor: 0, goalsAgainst: 2, goalDifference: -2, points: 0, tiedRankGroupSize: 1 },
+      ],
+    };
+    render(
+      <TournamentDetail
+        tournament={baseTournament}
+        participants={[internalParticipant, externalParticipant]}
+        groups={[standingsGroup]}
+        venues={[]}
+        matches={[]}
+        availableTeamSeasons={[]}
+        availableVenues={[]}
+      />,
+    );
+    expect(screen.getByText("Endstand")).toBeInTheDocument();
+    expect(screen.queryByText("Zwischenstand")).not.toBeInTheDocument();
+  });
+
+  it("marks a genuine sporting tie with an asterisk and an explanatory note, without hiding either team", () => {
+    // Note: rank is always a distinct 1/2 (a stable total order the table
+    // can render), tiedRankGroupSize=2 on BOTH rows is what actually
+    // signals "sportingly not distinguishable" — see GroupStandingsRow.
+    const standingsGroup = {
+      ...group,
+      isComplete: true,
+      standings: [
+        { participantId: "participant-1", rank: 1, played: 1, wins: 1, draws: 0, losses: 0, goalsFor: 1, goalsAgainst: 0, goalDifference: 1, points: 3, tiedRankGroupSize: 2 },
+        { participantId: "participant-2", rank: 2, played: 1, wins: 1, draws: 0, losses: 0, goalsFor: 1, goalsAgainst: 0, goalDifference: 1, points: 3, tiedRankGroupSize: 2 },
+      ],
+    };
+    render(
+      <TournamentDetail
+        tournament={baseTournament}
+        participants={[internalParticipant, externalParticipant]}
+        groups={[standingsGroup]}
+        venues={[]}
+        matches={[]}
+        availableTeamSeasons={[]}
+        availableVenues={[]}
+      />,
+    );
+    expect(screen.getByText(/platzierung sportlich nicht eindeutig/i)).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    const rows = within(table).getAllByRole("row");
+    expect(within(rows[1]!).getByText("1*")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("E1 (E-Jugend)")).toBeInTheDocument();
+    expect(within(rows[2]!).getByText("2*")).toBeInTheDocument();
+    expect(within(rows[2]!).getByText("SV Testhausen")).toBeInTheDocument();
   });
 
   it("displays tournament matches with home/away participants and group", () => {
