@@ -53,6 +53,10 @@ export interface MatchDto {
   awayScore: number | null;
   notes: string | null;
   canEdit: boolean;
+  // Phase 15: exposes ADR 0011's immutability rule to clients so the UI can
+  // hide the result-entry form once it would be rejected anyway (409),
+  // instead of leaking `resultPropagatedAt` itself as a raw timestamp.
+  resultLocked: boolean;
 }
 
 const PARTICIPANT_SELECT = {
@@ -196,6 +200,7 @@ export class MatchesService {
       awayScore: match.awayScore,
       notes: match.notes,
       canEdit,
+      resultLocked: match.resultPropagatedAt !== null,
     };
   }
 
