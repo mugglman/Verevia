@@ -214,6 +214,26 @@ describe("Slot resolution — WinnerOfMatch (4-team bracket)", () => {
     const afterResponse = await request(server).get(`/api/v1/football/matches/${finalMatch!.id}`).set("Cookie", admin.cookie).set("X-Tenant-Id", tenantAId);
     expect(afterResponse.body.homeParticipantName).toMatch(/^Slot Test Team /);
   });
+
+  it("Phase 15: MatchDto.resultLocked reflects propagation — false before, true only on the source match after resolving a dependent slot", async () => {
+    const admin = await createAuthenticatedMember(tenantAId, "tenant-admin-slot-locked-flag", [{ role: "TENANT_ADMIN", scopeType: "TENANT" }]);
+    const { matches } = await createCommittedBracket(admin.cookie, tenantAId, { participantCount: 4 });
+    const [sf1, sf2, finalMatch] = matches;
+
+    for (const m of [sf1, sf2, finalMatch]) {
+      const before = await request(server).get(`/api/v1/football/matches/${m!.id}`).set("Cookie", admin.cookie).set("X-Tenant-Id", tenantAId);
+      expect(before.body.resultLocked).toBe(false);
+    }
+
+    await patchMatch(admin.cookie, tenantAId, sf1!.id, { status: "COMPLETED", homeScore: 2, awayScore: 1 });
+
+    const sf1After = await request(server).get(`/api/v1/football/matches/${sf1!.id}`).set("Cookie", admin.cookie).set("X-Tenant-Id", tenantAId);
+    expect(sf1After.body.resultLocked).toBe(true);
+    // SF2/Final are unaffected by SF1's own propagation — the Final itself
+    // only becomes locked once ITS OWN result later resolves something.
+    const sf2After = await request(server).get(`/api/v1/football/matches/${sf2!.id}`).set("Cookie", admin.cookie).set("X-Tenant-Id", tenantAId);
+    expect(sf2After.body.resultLocked).toBe(false);
+  });
 });
 
 describe("Slot resolution — LoserOfMatch (Spiel um Platz 3)", () => {

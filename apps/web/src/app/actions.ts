@@ -546,3 +546,31 @@ export async function createTournamentMatchAction(tournamentId: string, formData
   });
   revalidatePath(`/fussball/turniere/${tournamentId}`);
 }
+
+/**
+ * Phase 15: records a tournament match's result — deliberately just a thin
+ * wrapper around the EXISTING PATCH /football/matches/:id endpoint (Phase
+ * 14), not a new API route. Setting status to COMPLETED here is what
+ * triggers the already-existing server-side WinnerOfMatch/LoserOfMatch
+ * slot propagation; this action adds no new backend logic. Called
+ * imperatively (not bound to a `<form action>`) from the client result-
+ * entry form so a 409 ("already propagated") can be shown inline instead
+ * of surfacing Next.js's default error boundary — same
+ * ScheduleActionResult pattern as previewTournamentKnockoutAction.
+ */
+export async function updateTournamentMatchResultAction(
+  tournamentId: string,
+  matchId: string,
+  result: { homeScore: number; awayScore: number },
+): Promise<ScheduleActionResult<unknown>> {
+  const tenantId = await requireTenantId();
+  const response = await apiFetch(`/api/v1/football/matches/${matchId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "COMPLETED", homeScore: result.homeScore, awayScore: result.awayScore }),
+  });
+  if (!response.ok) {
+    return { ok: false, status: response.status, message: response.message };
+  }
+  revalidatePath(`/fussball/turniere/${tournamentId}`);
+  return { ok: true, data: response.data };
+}

@@ -11,6 +11,7 @@ import {
 } from "@/app/actions";
 import { DateTimeInput } from "./datetime-input";
 import { MATCH_HOME_AWAY_LABELS, MATCH_STATUS_LABELS, type MatchOverviewHomeAway, type MatchOverviewStatus } from "./matches-overview";
+import { TournamentMatchResultForm } from "./tournament-match-result-form";
 import {
   TOURNAMENT_MODE_LABELS,
   TOURNAMENT_STATUS_LABELS,
@@ -56,7 +57,9 @@ export interface TournamentDetailVenue {
 
 export interface TournamentDetailMatch {
   id: string;
+  homeParticipantId: string | null;
   homeParticipantName: string | null;
+  awayParticipantId: string | null;
   awayParticipantName: string | null;
   tournamentGroupName: string | null;
   venueName: string | null;
@@ -65,6 +68,8 @@ export interface TournamentDetailMatch {
   homeAway: MatchOverviewHomeAway;
   homeScore: number | null;
   awayScore: number | null;
+  canEdit: boolean;
+  resultLocked: boolean;
 }
 
 export interface TournamentDetailAvailableTeamSeason {
@@ -490,22 +495,47 @@ export function TournamentDetail({
           </p>
         ) : (
           <ul className="space-y-2">
-            {matches.map((match) => (
-              <li key={match.id} className="rounded-2xl border border-neutral-200 bg-white p-3">
-                <p className="text-sm text-neutral-500">{formatDateTime(match.startsAt)}</p>
-                <p className="font-medium text-[var(--color-dark)]">
-                  {match.homeParticipantName} – {match.awayParticipantName}
-                  {match.status === "COMPLETED" && match.homeScore != null && match.awayScore != null
-                    ? ` ${match.homeScore}:${match.awayScore}`
-                    : ""}
-                </p>
-                <p className="text-sm text-neutral-500">
-                  {match.tournamentGroupName ?? "Ohne Gruppe"}
-                  {match.venueName ? ` · ${match.venueName}` : ""}
-                  {match.status !== "SCHEDULED" ? ` · ${MATCH_STATUS_LABELS[match.status]}` : ""}
-                </p>
-              </li>
-            ))}
+            {matches.map((match) => {
+              const hasResult = match.status === "COMPLETED" && match.homeScore != null && match.awayScore != null;
+              const isDraw = hasResult && match.homeScore === match.awayScore;
+              const homeWon = hasResult && !isDraw && match.homeScore! > match.awayScore!;
+              const awayWon = hasResult && !isDraw && match.awayScore! > match.homeScore!;
+              // Playable = both sides already resolved to a real participant
+              // (no pending WinnerOfMatch/LoserOfMatch/GROUP_POSITION slot
+              // left, see Phase 13/14) — not derivable from the display
+              // names alone, since a pending slot renders as text too.
+              const isPlayable = Boolean(match.homeParticipantId && match.awayParticipantId);
+
+              return (
+                <li key={match.id} className="rounded-2xl border border-neutral-200 bg-white p-3">
+                  <p className="text-sm text-neutral-500">{formatDateTime(match.startsAt)}</p>
+                  <p className="font-medium text-[var(--color-dark)]">
+                    <span className={homeWon ? "font-semibold" : undefined}>{match.homeParticipantName}</span>
+                    {" – "}
+                    <span className={awayWon ? "font-semibold" : undefined}>{match.awayParticipantName}</span>
+                    {hasResult ? ` ${match.homeScore}:${match.awayScore}` : ""}
+                  </p>
+                  <p className="text-sm text-neutral-500">
+                    {match.tournamentGroupName ?? "Ohne Gruppe"}
+                    {match.venueName ? ` · ${match.venueName}` : ""}
+                    {match.status !== "SCHEDULED" ? ` · ${MATCH_STATUS_LABELS[match.status]}` : ""}
+                  </p>
+                  {isDraw && <p className="text-sm text-neutral-500">Unentschieden – kein Gewinner ermittelt, keine Weitergabe an Folgespiele.</p>}
+                  {match.canEdit && isPlayable && !match.resultLocked && (
+                    <TournamentMatchResultForm
+                      tournamentId={tournament.id}
+                      matchId={match.id}
+                      hasExistingResult={hasResult}
+                      initialHomeScore={match.homeScore}
+                      initialAwayScore={match.awayScore}
+                    />
+                  )}
+                  {match.canEdit && match.resultLocked && (
+                    <p className="mt-1 text-xs text-neutral-500">Ergebnis wurde bereits verwendet und kann nicht mehr geändert werden.</p>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
 
