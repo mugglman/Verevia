@@ -24,3 +24,4 @@ Jede wesentliche architektonische Entscheidung wird als eigenes ADR-Dokument fes
 - [0009 – Tenant-gebundene Mehrfach-Statement-Transaktionen](./0009-tenant-scoped-multi-statement-transactions.md) — ACCEPTED
 - [0010 – Pending KO-Spielteilnehmer als TournamentMatchSlot](./0010-knockout-pending-match-slots.md) — ACCEPTED
 - [0011 – Bereits propagierte KO-Ergebnisse sind unveränderlich](./0011-propagated-result-immutability.md) — ACCEPTED
+- [0012 – Gruppentabellen sind abgeleitete Daten; technische Deterministik entscheidet nie einen sportlichen Gleichstand](./0012-group-standings-derived-technical-tiebreak.md) — ACCEPTED
