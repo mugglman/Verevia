@@ -10,6 +10,7 @@ import {
   updateTournamentAction,
 } from "@/app/actions";
 import { DateTimeInput } from "./datetime-input";
+import { GroupStandingsTable } from "./group-standings-table";
 import { MATCH_HOME_AWAY_LABELS, MATCH_STATUS_LABELS, type MatchOverviewHomeAway, type MatchOverviewStatus } from "./matches-overview";
 import { TournamentMatchResultForm } from "./tournament-match-result-form";
 import {
@@ -176,6 +177,13 @@ export function TournamentDetail({
           {tournament.mode ? ` · ${TOURNAMENT_MODE_LABELS[tournament.mode]}` : ""}
         </p>
         {tournament.description && <p className="text-sm text-neutral-600">{tournament.description}</p>}
+        {tournament.status !== "DRAFT" && (
+          <p>
+            <Link href={`/turnier/${tournament.id}`} className="text-xs text-neutral-500 hover:text-[var(--color-primary)] hover:underline">
+              Öffentliche Turnierseite ansehen
+            </Link>
+          </p>
+        )}
 
         {tournament.canEdit && (
           <form
@@ -383,7 +391,6 @@ export function TournamentDetail({
           <ul className="space-y-3">
             {groups.map((group) => {
               const hasStandings = group.standings.length > 0 && group.standings.some((row) => row.played > 0);
-              const hasTie = group.standings.some((row) => row.tiedRankGroupSize > 1);
               return (
                 <li key={group.id} className="rounded-2xl border border-neutral-200 bg-white p-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -393,51 +400,13 @@ export function TournamentDetail({
                     )}
                   </div>
                   {hasStandings ? (
-                    <div className="mt-2 overflow-x-auto">
-                      <table className="w-full min-w-[420px] text-sm">
-                        <thead>
-                          <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
-                            <th className="py-1.5 pr-2 font-medium">Pos</th>
-                            <th className="px-2 py-1.5 font-medium">Team</th>
-                            <th className="px-2 py-1.5 text-right font-medium">Sp</th>
-                            <th className="px-2 py-1.5 text-right font-medium">S</th>
-                            <th className="px-2 py-1.5 text-right font-medium">U</th>
-                            <th className="px-2 py-1.5 text-right font-medium">N</th>
-                            <th className="px-2 py-1.5 text-right font-medium">Tore</th>
-                            <th className="px-2 py-1.5 text-right font-medium">Diff</th>
-                            <th className="py-1.5 pl-2 text-right font-medium">Pkt</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.standings.map((row) => {
-                            const participant = participants.find((p) => p.id === row.participantId);
-                            return (
-                              <tr key={row.participantId} className="border-b border-neutral-100 last:border-0">
-                                <td className="py-1.5 pr-2 text-neutral-500">
-                                  {row.rank}
-                                  {row.tiedRankGroupSize > 1 ? "*" : ""}
-                                </td>
-                                <td className="px-2 py-1.5 font-medium text-[var(--color-dark)]">
-                                  {participant ? participantLabel(participant) : ""}
-                                </td>
-                                <td className="px-2 py-1.5 text-right">{row.played}</td>
-                                <td className="px-2 py-1.5 text-right">{row.wins}</td>
-                                <td className="px-2 py-1.5 text-right">{row.draws}</td>
-                                <td className="px-2 py-1.5 text-right">{row.losses}</td>
-                                <td className="px-2 py-1.5 text-right">
-                                  {row.goalsFor}:{row.goalsAgainst}
-                                </td>
-                                <td className="px-2 py-1.5 text-right">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
-                                <td className="py-1.5 pl-2 text-right font-semibold">{row.points}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                      {hasTie && (
-                        <p className="mt-1 text-xs text-neutral-500">* Platzierung sportlich nicht eindeutig (Punktgleichstand)</p>
-                      )}
-                    </div>
+                    <GroupStandingsTable
+                      standings={group.standings}
+                      participantLabel={(participantId) => {
+                        const participant = participants.find((p) => p.id === participantId);
+                        return participant ? participantLabel(participant) : "";
+                      }}
+                    />
                   ) : (
                     <ul className="mt-1 space-y-0.5 text-sm text-neutral-500">
                       {activeParticipants

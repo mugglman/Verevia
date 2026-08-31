@@ -19,6 +19,8 @@ import { TournamentVenuesController } from "./tournaments/venues/tournament-venu
 import { TournamentVenuesService } from "./tournaments/venues/tournament-venues.service";
 import { TournamentsController } from "./tournaments/tournaments.controller";
 import { TournamentsService } from "./tournaments/tournaments.service";
+import { PublicTournamentController } from "./tournaments/public/public-tournament.controller";
+import { PublicTournamentService } from "./tournaments/public/public-tournament.service";
 
 @Module({
   imports: [AuthorizationModule],
@@ -33,6 +35,7 @@ import { TournamentsService } from "./tournaments/tournaments.service";
     TournamentMatchesController,
     TournamentScheduleController,
     TournamentKnockoutController,
+    PublicTournamentController,
   ],
   providers: [
     AgeGroupsService,
@@ -44,6 +47,7 @@ import { TournamentsService } from "./tournaments/tournaments.service";
     TournamentGroupsService,
     TournamentScheduleService,
     TournamentKnockoutService,
+    PublicTournamentService,
   ],
 })
 export class FootballModule {}

@@ -43,7 +43,14 @@ test("TENANT_ADMIN erstellt und übernimmt automatisch einen KO-Baum", async ({ 
   await page.getByLabel("Beginn").fill("2026-12-12T09:00");
   await page.getByLabel(/^modus$/i).selectOption("KNOCKOUT");
   await page.getByRole("button", { name: "Turnier anlegen" }).click();
-  await expectVisibleAfterSubmit(page, page.getByRole("heading", { name: tournamentName }));
+  // NOT expectVisibleAfterSubmit here: this waits on createTournamentAction's
+  // client-side redirect, which can take several seconds under measured
+  // SSH-tunnel latency. Reloading while that redirect is still in flight
+  // discards it outright (see PHASE_16 report, "Bestehende Altlasten" —
+  // root-caused and fixed in Phase 17). page.waitForURL keeps waiting
+  // instead of interrupting it.
+  await page.waitForURL(/\/fussball\/turniere\/[0-9a-f-]+$/, { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: tournamentName })).toBeVisible();
 
   // Vier externe Teilnehmer hinzufügen (kein Gruppenzuordnung nötig —
   // reines K.-o.-Turnier, Modus B aus dem Phase-13-Auftrag).

@@ -105,13 +105,16 @@ const MATCH_INCLUDE = {
   slotsAsOwner: SLOT_SELECT,
 } as const;
 
-type ParticipantRef = {
+// Exported: reused as-is by PublicTournamentService (public/read-only
+// tournament view) so match-side display labels are computed in exactly
+// one place — no second label-resolution engine for the public page.
+export type ParticipantRef = {
   id: string;
   externalName: string | null;
   teamSeason: { team: { name: string } } | null;
 } | null;
 
-type PendingSlotRef = {
+export type PendingSlotRef = {
   side: "HOME" | "AWAY";
   sourceType: "GROUP_POSITION" | "WINNER_OF_MATCH" | "LOSER_OF_MATCH";
   groupId: string | null;
@@ -145,7 +148,7 @@ type MatchWithRelations = {
   slotsAsOwner: PendingSlotRef[];
 };
 
-function participantName(participant: ParticipantRef): string | null {
+export function participantName(participant: ParticipantRef): string | null {
   if (!participant) {
     return null;
   }
@@ -153,7 +156,7 @@ function participantName(participant: ParticipantRef): string | null {
 }
 
 /** Fallback label for a still-pending KO side (see MATCH_INCLUDE's slotsAsOwner comment). */
-function pendingSlotLabel(slots: PendingSlotRef[], side: "HOME" | "AWAY"): string | null {
+export function pendingSlotLabel(slots: PendingSlotRef[], side: "HOME" | "AWAY"): string | null {
   const slot = slots.find((s) => s.side === side);
   if (!slot) return null;
   if (slot.sourceType === "GROUP_POSITION") {

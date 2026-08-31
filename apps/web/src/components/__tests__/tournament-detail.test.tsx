@@ -87,6 +87,37 @@ describe("TournamentDetail", () => {
     expect(screen.getByText(/gruppenphase/i)).toBeInTheDocument();
   });
 
+  it("links to the public tournament page for a non-DRAFT tournament", () => {
+    render(
+      <TournamentDetail
+        tournament={baseTournament}
+        participants={[]}
+        groups={[]}
+        venues={[]}
+        matches={[]}
+        availableTeamSeasons={[]}
+        availableVenues={[]}
+      />,
+    );
+    const link = screen.getByRole("link", { name: /öffentliche turnierseite ansehen/i });
+    expect(link).toHaveAttribute("href", "/turnier/tournament-1");
+  });
+
+  it("hides the public tournament page link for a DRAFT tournament (not yet meant to be public)", () => {
+    render(
+      <TournamentDetail
+        tournament={{ ...baseTournament, status: "DRAFT" }}
+        participants={[]}
+        groups={[]}
+        venues={[]}
+        matches={[]}
+        availableTeamSeasons={[]}
+        availableVenues={[]}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: /öffentliche turnierseite ansehen/i })).not.toBeInTheDocument();
+  });
+
   it("distinguishes internal (Verevia-Mannschaft) from external (Externe Mannschaft) participants", () => {
     render(
       <TournamentDetail
