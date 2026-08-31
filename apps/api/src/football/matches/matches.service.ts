@@ -1,16 +1,23 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { getTenantContext, getTenantPrisma, MatchHomeAway, MatchStatus, MatchType } from "@verevia/database";
+import type { PrismaClient } from "@verevia/database";
+import { getTenantContext, getTenantPrisma, MatchHomeAway, MatchStatus, MatchType, withTenantTransaction } from "@verevia/database";
 import { AuthorizationService } from "../../authorization/authorization.service";
 import { PersonRoleAssignmentsService } from "../../authorization/person-role-assignments.service";
 import { CreateMatchDto } from "./dto/create-match.dto";
 import { ListMatchesQueryDto } from "./dto/list-matches-query.dto";
 import { UpdateMatchDto } from "./dto/update-match.dto";
+import {
+  determineMatchOutcome,
+  planSlotResolutions,
+  type PendingResultSlot,
+} from "../tournaments/schedule/generator/knockout-slot-resolution";
 
 /**
  * A FootballMatch is either a club match or a tournament match (see ADR
@@ -56,6 +63,26 @@ const PARTICIPANT_SELECT = {
   },
 } as const;
 
+// slotsAsOwner: for a still-pending KO side (homeParticipantId/
+// awayParticipantId NULL, see ADR 0010), this is how a human-readable
+// fallback label is built instead of rendering nothing (Phase 14 fix — the
+// generic match list never showed anything for a pending KO side before
+// this). Deliberately NOT round-aware ("Sieger Halbfinale 1") — the round
+// a match belongs to isn't persisted anywhere post-commit (only existed
+// transiently during Phase 13 bracket generation), and reconstructing it
+// here would need new schema/infrastructure out of Phase 14's scope. A
+// plain, honest "not yet decided" label is preferred over a wrong or
+// cryptic one.
+const SLOT_SELECT = {
+  select: {
+    side: true,
+    sourceType: true,
+    groupId: true,
+    groupPosition: true,
+    group: { select: { name: true } },
+  },
+} as const;
+
 const MATCH_INCLUDE = {
   teamSeason: {
     select: {
@@ -68,6 +95,7 @@ const MATCH_INCLUDE = {
   tournamentGroup: { select: { name: true } },
   homeParticipant: PARTICIPANT_SELECT,
   awayParticipant: PARTICIPANT_SELECT,
+  slotsAsOwner: SLOT_SELECT,
 } as const;
 
 type ParticipantRef = {
@@ -75,6 +103,14 @@ type ParticipantRef = {
   externalName: string | null;
   teamSeason: { team: { name: string } } | null;
 } | null;
+
+type PendingSlotRef = {
+  side: "HOME" | "AWAY";
+  sourceType: "GROUP_POSITION" | "WINNER_OF_MATCH" | "LOSER_OF_MATCH";
+  groupId: string | null;
+  groupPosition: number | null;
+  group: { name: string } | null;
+};
 
 type MatchWithRelations = {
   id: string;
@@ -92,12 +128,14 @@ type MatchWithRelations = {
   homeScore: number | null;
   awayScore: number | null;
   notes: string | null;
+  resultPropagatedAt: Date | null;
   teamSeason: { seasonId: string; team: { id: string; name: string; departmentId: string } } | null;
   venue: { name: string } | null;
   tournament: { id: string; name: string; departmentId: string } | null;
   tournamentGroup: { name: string } | null;
   homeParticipant: ParticipantRef;
   awayParticipant: ParticipantRef;
+  slotsAsOwner: PendingSlotRef[];
 };
 
 function participantName(participant: ParticipantRef): string | null {
@@ -105,6 +143,16 @@ function participantName(participant: ParticipantRef): string | null {
     return null;
   }
   return participant.externalName ?? participant.teamSeason?.team.name ?? null;
+}
+
+/** Fallback label for a still-pending KO side (see MATCH_INCLUDE's slotsAsOwner comment). */
+function pendingSlotLabel(slots: PendingSlotRef[], side: "HOME" | "AWAY"): string | null {
+  const slot = slots.find((s) => s.side === side);
+  if (!slot) return null;
+  if (slot.sourceType === "GROUP_POSITION") {
+    return `${slot.group?.name ?? "Unbekannte Gruppe"}, Platz ${slot.groupPosition}`;
+  }
+  return slot.sourceType === "WINNER_OF_MATCH" ? "Sieger (steht noch nicht fest)" : "Verlierer (steht noch nicht fest)";
 }
 
 @Injectable()
@@ -135,9 +183,9 @@ export class MatchesService {
       tournamentGroupId: match.tournamentGroupId,
       tournamentGroupName: match.tournamentGroup?.name ?? null,
       homeParticipantId: match.homeParticipantId,
-      homeParticipantName: participantName(match.homeParticipant),
+      homeParticipantName: participantName(match.homeParticipant) ?? pendingSlotLabel(match.slotsAsOwner, "HOME"),
       awayParticipantId: match.awayParticipantId,
-      awayParticipantName: participantName(match.awayParticipant),
+      awayParticipantName: participantName(match.awayParticipant) ?? pendingSlotLabel(match.slotsAsOwner, "AWAY"),
       venueId: match.venueId,
       venueName: match.venue?.name ?? null,
       startsAt: match.startsAt.toISOString(),
@@ -434,21 +482,122 @@ export class MatchesService {
     const finalAwayScore = dto.awayScore !== undefined ? dto.awayScore : existing.awayScore;
     this.assertValidScoreStatus(finalStatus, finalHomeScore, finalAwayScore);
 
-    const match = await db.footballMatch.update({
-      where: { id: existing.id },
-      data: {
-        venueId: dto.venueId,
-        startsAt: dto.startsAt ? new Date(dto.startsAt) : undefined,
-        // type is never changed here — a tournament match stays TOURNAMENT.
-        status: dto.status,
-        homeAway: dto.homeAway,
-        tournamentGroupId: dto.tournamentGroupId,
-        homeScore: dto.homeScore,
-        awayScore: dto.awayScore,
-        notes: dto.notes,
-      },
-      include: MATCH_INCLUDE,
+    // Phase 14 / ADR 0011: once this match's result has already been used
+    // to fill in at least one dependent TournamentMatchSlot (e.g. Halbfinale
+    // -> Finale), the result becomes immutable via this endpoint — silently
+    // correcting it afterwards could desynchronize a participant already
+    // propagated into a downstream match. Re-submitting the exact same
+    // (status, homeScore, awayScore) is a harmless no-op, not a "change".
+    this.assertResultNotLocked(existing, finalStatus, finalHomeScore, finalAwayScore);
+
+    return withTenantTransaction(context.tenantId, async (tx) => {
+      // Serializes concurrent finalizations of the SAME match (same
+      // row-lock pattern as ADR 0009) — a second, racing request blocks
+      // here until the first commits, then re-checks against the now-
+      // current state below instead of the possibly-stale `existing` read
+      // before this transaction began.
+      await tx.$queryRaw`SELECT id FROM football_match WHERE id = ${existing.id} FOR UPDATE`;
+      const txDb = tx as unknown as PrismaClient;
+
+      const fresh = await txDb.footballMatch.findUniqueOrThrow({ where: { id: existing.id } });
+      this.assertResultNotLocked(fresh, finalStatus, finalHomeScore, finalAwayScore);
+
+      const updated = await txDb.footballMatch.update({
+        where: { id: existing.id },
+        data: {
+          venueId: dto.venueId,
+          startsAt: dto.startsAt ? new Date(dto.startsAt) : undefined,
+          // type is never changed here — a tournament match stays TOURNAMENT.
+          status: dto.status,
+          homeAway: dto.homeAway,
+          tournamentGroupId: dto.tournamentGroupId,
+          homeScore: dto.homeScore,
+          awayScore: dto.awayScore,
+          notes: dto.notes,
+        },
+        include: MATCH_INCLUDE,
+      });
+
+      if (updated.status === "COMPLETED") {
+        await this.resolveDependentSlots(txDb, updated);
+      }
+
+      return this.toDto(updated, true);
     });
-    return this.toDto(match, true);
+  }
+
+  /** Throws 409 if `existing`'s result was already propagated AND the incoming values would actually change it. */
+  private assertResultNotLocked(
+    existing: Pick<MatchWithRelations, "status" | "homeScore" | "awayScore" | "resultPropagatedAt">,
+    finalStatus: MatchStatus,
+    finalHomeScore: number | null,
+    finalAwayScore: number | null,
+  ) {
+    const resultWouldChange =
+      finalStatus !== existing.status || finalHomeScore !== existing.homeScore || finalAwayScore !== existing.awayScore;
+    if (existing.resultPropagatedAt && resultWouldChange) {
+      throw new ConflictException(
+        "Das Ergebnis wurde bereits zur Auslosung nachfolgender KO-Spiele verwendet und kann nicht mehr geändert werden.",
+      );
+    }
+  }
+
+  /**
+   * Phase 14: after a tournament match is finalized (COMPLETED with an
+   * unambiguous winner/loser — see determineMatchOutcome), fill in every
+   * dependent TournamentMatchSlot (WINNER_OF_MATCH/LOSER_OF_MATCH only —
+   * GROUP_POSITION slots don't depend on a match result, resolving those
+   * needs group-standings calculation, out of scope here) and remove the
+   * now-superfluous slot rows. Idempotent by construction: once a slot is
+   * resolved and deleted, a repeat call finds nothing left to do.
+   */
+  private async resolveDependentSlots(txDb: PrismaClient, match: MatchWithRelations): Promise<void> {
+    const outcome = determineMatchOutcome({
+      status: match.status,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+      homeParticipantId: match.homeParticipantId,
+      awayParticipantId: match.awayParticipantId,
+    });
+    if (!outcome) return;
+
+    const pendingSlots = await txDb.tournamentMatchSlot.findMany({
+      where: { sourceMatchId: match.id, sourceType: { in: ["WINNER_OF_MATCH", "LOSER_OF_MATCH"] } },
+    });
+    if (pendingSlots.length === 0) return;
+
+    const planned = planSlotResolutions(
+      outcome,
+      pendingSlots.map(
+        (slot): PendingResultSlot => ({
+          slotId: slot.id,
+          targetMatchId: slot.matchId,
+          side: slot.side,
+          sourceType: slot.sourceType as "WINNER_OF_MATCH" | "LOSER_OF_MATCH",
+        }),
+      ),
+    );
+
+    // Lock every distinct target match before writing into it — two
+    // semifinals completing concurrently write DIFFERENT sides of the SAME
+    // Final row; the lock (plus Postgres's own per-statement row locking on
+    // UPDATE) guarantees neither write is lost.
+    const targetMatchIds = [...new Set(planned.map((p) => p.targetMatchId))];
+    for (const targetMatchId of targetMatchIds) {
+      await txDb.$queryRaw`SELECT id FROM football_match WHERE id = ${targetMatchId} FOR UPDATE`;
+    }
+
+    for (const resolution of planned) {
+      await txDb.footballMatch.update({
+        where: { id: resolution.targetMatchId },
+        data:
+          resolution.side === "HOME"
+            ? { homeParticipantId: resolution.participantId }
+            : { awayParticipantId: resolution.participantId },
+      });
+    }
+
+    await txDb.tournamentMatchSlot.deleteMany({ where: { id: { in: planned.map((p) => p.slotId) } } });
+    await txDb.footballMatch.update({ where: { id: match.id }, data: { resultPropagatedAt: new Date() } });
   }
 }

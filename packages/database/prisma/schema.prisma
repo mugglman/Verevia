@@ -24,7 +24,12 @@
 // nicht aufgelöste Spielteilnehmer wie "Sieger Halbfinale 1", noch keine
 // automatische Auflösung nach Ergebnissen) kam in Phase 13 hinzu, siehe
 // docs/PHASE_13_TOURNAMENT_KNOCKOUT_GENERATOR_REPORT.md und
-// docs/architecture/adr/0010-knockout-pending-match-slots.md.
+// docs/architecture/adr/0010-knockout-pending-match-slots.md. Die
+// automatische Auflösung von TournamentMatchSlot nach Spielabschluss
+// (WinnerOfMatch/LoserOfMatch-Propagierung, FootballMatch.resultPropagatedAt)
+// kam in Phase 14 hinzu, siehe
+// docs/PHASE_14_TOURNAMENT_MATCH_SLOT_RESOLUTION_REPORT.md und
+// docs/architecture/adr/0011-propagated-result-immutability.md.
 // Prisma ist absichtlich auf ^6.x gepinnt (nicht 7), siehe
 // docs/architecture/adr/0002-authentication-strategy.md.
 //
@@ -977,6 +982,17 @@ model FootballMatch {
   notes        String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+
+  // Phase 14: gesetzt, sobald dieses Spiel (als Quelle eines
+  // WINNER_OF_MATCH/LOSER_OF_MATCH-Slots) mindestens einen abhängigen
+  // TournamentMatchSlot aufgelöst hat. Der Slot-Datensatz selbst wird bei
+  // Auflösung gelöscht (siehe TournamentMatchSlot) — ohne dieses Feld gäbe
+  // es danach keine durable Spur mehr davon, dass bereits propagiert wurde.
+  // Sobald gesetzt, sind status/homeScore/awayScore dieses Spiels über die
+  // Ergebnis-API unveränderlich (siehe ADR 0011) — verhindert stille
+  // Inkonsistenzen zwischen einem nachträglich korrigierten Ergebnis und
+  // bereits weitergegebenen Teilnehmern in Folgespielen.
+  resultPropagatedAt DateTime?
 
   // Turniermatch-Modus (Phase 11, ADR 0008) — alle vier NULL im
   // Vereinsmatch-Modus. `tournamentGroupId`/`home`/`awayParticipantId`
