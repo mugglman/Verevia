@@ -130,7 +130,7 @@ Dieser Bericht sowie [ADR 0014](architecture/adr/0014-event-dual-scope-authoriza
 ## 23. Git/PR
 
 - Branch: `feat/calendar-events`
-- Endcommit: siehe PR
+- Endcommit: `53eaa24`
 - PR: siehe unten
 - **Gemergt: NEIN**
 
