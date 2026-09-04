@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ClubModule } from "./club/club.module";
 import { DepartmentsModule } from "./departments/departments.module";
+import { EventsModule } from "./events/events.module";
 import { FootballModule } from "./football/football.module";
 import { HealthModule } from "./health/health.module";
 import { InvitationsModule } from "./invitations/invitations.module";
@@ -22,6 +23,7 @@ import { VenuesModule } from "./venues/venues.module";
     SeasonsModule,
     FootballModule,
     VenuesModule,
+    EventsModule,
   ],
 })
 export class AppModule {}

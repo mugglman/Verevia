@@ -253,6 +253,18 @@ enum AccountInvitationStatus {
   REVOKED
 }
 
+/// Grobe Kategorisierung eines Kalendereintrags (Phase 18) — siehe
+/// Modellkommentar an `Event`. Bewusst ein kleines, stabiles Enum (gleiche
+/// Begründung wie `SportType`/`MatchType`): die beiden in
+/// docs/database/Database.md genannten Beispiele ("Training oder
+/// Besprechung") plus ein Auffangwert, kein offener, frei erweiterbarer
+/// Kategorienkatalog.
+enum EventType {
+  TRAINING
+  MEETING
+  OTHER
+}
+
 // ---------------------------------------------------------------------------
 // better-auth-eigene Modelle (generiert via `npx @better-auth/cli generate`,
 // siehe packages/auth/src/index.ts). `User` ist um das domänenspezifische
@@ -382,6 +394,7 @@ model Tenant {
   tournamentVenues       TournamentVenue[]
   tournamentGroups       TournamentGroup[]
   tournamentMatchSlots   TournamentMatchSlot[]
+  events                 Event[]
 
   @@map("tenant")
 }
@@ -405,6 +418,7 @@ model Department {
   roleAssignments     RoleAssignment[]
   seasons             Season[]
   footballTournaments FootballTournament[]
+  events              Event[]
 
   @@unique([tenantId, name])
   // Composite-Unique (zusätzlich zum bereits eindeutigen `id`), damit
@@ -434,6 +448,7 @@ model Team {
   roleAssignments RoleAssignment[]
   teamMembers     TeamMember[]
   teamSeasons     TeamSeason[]
+  events          Event[]
 
   @@unique([departmentId, name])
   @@unique([tenantId, id])
@@ -753,6 +768,7 @@ model Season {
 
   teamSeasons         TeamSeason[]
   footballTournaments FootballTournament[]
+  events              Event[]
 
   @@unique([departmentId, name])
   @@unique([tenantId, id])
@@ -891,6 +907,7 @@ model Venue {
 
   footballMatches  FootballMatch[]
   tournamentVenues TournamentVenue[]
+  events           Event[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, id])
@@ -1253,4 +1270,69 @@ model TournamentMatchSlot {
   @@index([groupId])
   @@index([sourceMatchId])
   @@map("tournament_match_slot")
+}
+
+/// Kalendereintrag (Phase 18) — siehe docs/database/Database.md, Entität
+/// "Event (Termin)": "Ein Kalendereintrag, z. B. Training oder
+/// Besprechung." Bewusst sportneutral und nicht unter `football/`
+/// modelliert (gleiches Muster wie `Venue`, Phase 10) — ein Termin ist
+/// kein fußballspezifisches Konzept.
+///
+/// Gehört zu genau einem `Team` ODER genau einer `Department`, nie beides,
+/// nie keines — CHECK-Constraint `event_scope_xor` in der Migration,
+/// identisches Muster zu `TournamentParticipant.teamSeasonId`/
+/// `externalName` (ADR 0008). Ein team-gebundener Termin (z. B. Training)
+/// ist eine alltägliche Trainer-Aufgabe (siehe
+/// docs/product/Roles-and-Permissions.md, Phase-10-Ergänzung zu
+/// `FootballMatch`) — die Autorisierung folgt deshalb bewusst demselben
+/// Muster wie `FootballMatch`/`canOnMatch`, nicht dem administrativeren
+/// `canOnTeam`/`canOnSeason`-Muster von `TeamSeason`/`FootballTournament`.
+/// Ein department-gebundener Termin (z. B. eine Abteilungsversammlung)
+/// folgt hingegen `canOnSeason` (DEPARTMENT_ADMIN verwaltet, jede Rolle in
+/// dieser Abteilung liest) — siehe `EventsService`.
+///
+/// `seasonId`/`venueId` sind optional (Database.md: "optional zu einer
+/// Season und einem Venue"). Bewusst KEINE Datenbank-Erzwingung, dass eine
+/// gesetzte `Season` tatsächlich zur selben Department gehört wie das
+/// Event (Team-gebundene Events hätten dafür einen Join über `Team` hinweg
+/// nötig, den reine Postgres-CHECK-Constraints nicht ausdrücken können) —
+/// stattdessen anwendungsseitig in `EventsService.create()` geprüft,
+/// gleiche Begründung wie bei `TeamSeason` (siehe dortiger Kommentar).
+///
+/// Bewusst OHNE `Attendance`/`Task`/`Notification` — jeweils eigenständige,
+/// weiterhin nicht implementierte Entitäten (Database.md), nicht Teil
+/// dieser Phase (siehe PHASE_18-Bericht, "Bewusst nicht im Scope").
+model Event {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  departmentId String?
+  // Composite FK (tenantId, departmentId) → department(tenantId, id) —
+  // gleiches Cross-Tenant-Konsistenzmuster wie überall sonst im Schema.
+  department   Department? @relation(fields: [tenantId, departmentId], references: [tenantId, id], onDelete: Restrict)
+
+  teamId String?
+  team   Team?   @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Restrict)
+
+  seasonId String?
+  season   Season? @relation(fields: [tenantId, seasonId], references: [tenantId, id], onDelete: Restrict)
+
+  venueId String?
+  venue   Venue?  @relation(fields: [tenantId, venueId], references: [tenantId, id], onDelete: Restrict)
+
+  title       String
+  description String?
+  type        EventType @default(OTHER)
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([departmentId])
+  @@index([teamId])
+  @@index([seasonId])
+  @@index([venueId])
+  @@map("event")
 }
