@@ -574,3 +574,68 @@ export async function updateTournamentMatchResultAction(
   revalidatePath(`/fussball/turniere/${tournamentId}`);
   return { ok: true, data: response.data };
 }
+
+/**
+ * Phase 18 — Kalender/Termine. `scope` is a single combined value from the
+ * create form's "Für wen"-select (`team:<id>` or `department:<id>`, see
+ * EventCreateForm) — parsed here into exactly one of teamId/departmentId,
+ * matching the API's event_scope_xor rule.
+ */
+export async function createEventAction(formData: FormData) {
+  const tenantId = await requireTenantId();
+  const scope = String(formData.get("scope") ?? "");
+  const [scopeKind, scopeId] = scope.split(":");
+  const title = String(formData.get("title") ?? "");
+  const type = String(formData.get("type") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  const venueId = String(formData.get("venueId") ?? "");
+  const description = String(formData.get("description") ?? "");
+  await apiFetch("/api/v1/events", tenantId, {
+    method: "POST",
+    body: JSON.stringify({
+      ...(scopeKind === "team" ? { teamId: scopeId } : {}),
+      ...(scopeKind === "department" ? { departmentId: scopeId } : {}),
+      title,
+      type,
+      startsAt,
+      endsAt,
+      ...(venueId ? { venueId } : {}),
+      ...(description ? { description } : {}),
+    }),
+  });
+  revalidatePath("/kalender");
+  // Same reasoning as createMatchAction: the create form lives on its own
+  // dedicated page, not inline on the list.
+  redirect("/kalender");
+}
+
+export async function updateEventAction(eventId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const title = String(formData.get("title") ?? "");
+  const type = String(formData.get("type") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  const venueId = String(formData.get("venueId") ?? "");
+  const description = String(formData.get("description") ?? "");
+  await apiFetch(`/api/v1/events/${eventId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({
+      title,
+      type,
+      startsAt,
+      endsAt,
+      venueId: venueId || undefined,
+      description: description || undefined,
+    }),
+  });
+  revalidatePath(`/kalender/${eventId}`);
+  revalidatePath("/kalender");
+}
+
+export async function deleteEventAction(eventId: string) {
+  const tenantId = await requireTenantId();
+  await apiFetch(`/api/v1/events/${eventId}`, tenantId, { method: "DELETE" });
+  revalidatePath("/kalender");
+  redirect("/kalender");
+}

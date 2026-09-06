@@ -63,7 +63,11 @@ test("TENANT_ADMIN legt ein Turnier an, Teilnehmer, Gruppe, Spielstätte und ein
   await page.getByLabel("Beginn").fill("2026-11-14T09:00");
   await page.getByLabel(/^modus$/i).selectOption("GROUPS");
   await page.getByRole("button", { name: "Turnier anlegen" }).click();
-
+  // Waits on createTournamentAction's client-side redirect, which can take
+  // several seconds under measured SSH-tunnel latency — page.waitForURL
+  // keeps waiting instead of a tight-timeout heading check (see PHASE_16
+  // report, "Bestehende Altlasten").
+  await page.waitForURL(/\/fussball\/turniere\/[0-9a-f-]+$/, { timeout: 30_000 });
   await expect(page.getByRole("heading", { name: tournamentName })).toBeVisible();
   // No status field on the create form → the API defaults to DRAFT. Scoped
   // to the status badge — "Entwurf" also appears as <option> text inside
@@ -130,7 +134,11 @@ test.describe("COACH E1", () => {
     await expect(page.getByRole("link", { name: "Turnier anlegen" })).toHaveCount(0);
 
     await page.getByText("Verevia Jugendcup 2026").click();
-    await expect(page.getByRole("heading", { name: "Verevia Jugendcup 2026" })).toBeVisible();
+    // Detail-page navigation, not a Server Action redirect — but the
+    // target page itself waits on multiple tunneled API fetches before
+    // rendering, so the same generous URL-based wait applies.
+    await page.waitForURL(/\/fussball\/turniere\/[0-9a-f-]+$/, { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Verevia Jugendcup 2026" })).toBeVisible({ timeout: 15_000 });
 
     // Read-only: no edit/create forms anywhere on the detail page.
     await expect(page.getByRole("button", { name: "Speichern" })).toHaveCount(0);

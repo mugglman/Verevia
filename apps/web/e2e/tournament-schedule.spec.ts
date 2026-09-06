@@ -43,6 +43,11 @@ test("TENANT_ADMIN erstellt und übernimmt automatisch einen Turnier-Spielplan",
   await page.getByLabel("Beginn").fill("2026-12-12T09:00");
   await page.getByLabel(/^modus$/i).selectOption("GROUPS");
   await page.getByRole("button", { name: "Turnier anlegen" }).click();
+  // Waits on createTournamentAction's client-side redirect, which can take
+  // several seconds under measured SSH-tunnel latency — page.waitForURL
+  // keeps waiting instead of a tight-timeout heading check (see PHASE_16
+  // report, "Bestehende Altlasten").
+  await page.waitForURL(/\/fussball\/turniere\/[0-9a-f-]+$/, { timeout: 30_000 });
   await expect(page.getByRole("heading", { name: tournamentName })).toBeVisible();
 
   // Vier externe Teilnehmer hinzufügen.
@@ -71,9 +76,15 @@ test("TENANT_ADMIN erstellt und übernimmt automatisch einen Turnier-Spielplan",
   const assignedVenueRow = page.locator("li", { has: page.getByRole("button", { name: "Entfernen" }) });
   await expectVisibleAfterSubmit(page, assignedVenueRow);
 
-  // Spielplan erstellen.
+  // Spielplan erstellen. The generator page awaits several tunneled API
+  // fetches (tournament, participants, groups, venues) before rendering —
+  // same latency-sensitive class as the already-fixed createTournamentAction
+  // redirect above, so a generous timeout applies here too instead of the
+  // 5s default.
   await page.getByRole("link", { name: "Spielplan erstellen" }).click();
-  await expect(page.getByRole("heading", { name: new RegExp(`Spielplan erstellen.*${tournamentName}`) })).toBeVisible();
+  await expect(page.getByRole("heading", { name: new RegExp(`Spielplan erstellen.*${tournamentName}`) })).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(page.getByText(/voraussichtlich 6 spiele insgesamt/i)).toBeVisible();
 
   // Einstellungen: Defaults übernehmen, Spielstätte ist bereits vorausgewählt.
@@ -109,7 +120,8 @@ test.describe("COACH E1", () => {
   test("kann einen Spielplan nicht generieren oder übernehmen (serverseitig erzwungen)", async ({ page }) => {
     await page.goto("/fussball/turniere");
     await page.getByText("Verevia Frühjahrscup 2026").click();
-    await expect(page.getByRole("heading", { name: "Verevia Frühjahrscup 2026" })).toBeVisible();
+    await page.waitForURL(/\/fussball\/turniere\/[0-9a-f-]+$/, { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Verevia Frühjahrscup 2026" })).toBeVisible({ timeout: 15_000 });
 
     // Kein "Spielplan erstellen"-Link für COACH sichtbar (kein canEdit).
     await expect(page.getByRole("link", { name: "Spielplan erstellen" })).toHaveCount(0);
