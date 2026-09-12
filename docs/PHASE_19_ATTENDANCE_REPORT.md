@@ -117,7 +117,7 @@ PostgreSQL 17, temporärer Container `verevia-phase19-pg17-test` (eigenes Volume
 ## 21. Finaler Git-/PR-Status
 
 - Branch: `feat/attendance-tracking`
-- Endcommit: siehe PR
+- Endcommit: `39186ec`
 - PR: siehe unten
 - **Gemergt: NEIN**
 
