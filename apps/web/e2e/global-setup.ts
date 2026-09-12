@@ -115,6 +115,13 @@ export default async function globalSetup(): Promise<void> {
       select: { userId: true },
     });
     const staleUserIds = staleMemberships.map((m) => m.userId);
+    // Phase 19: a stale Person may still be the SUBJECT of an Attendance row
+    // (personId is a Restrict FK) from a previous, possibly-failed run of
+    // e2e/attendance.spec.ts — must go before the Person itself, same
+    // FK-respecting order as everything else here. respondedByPersonId/
+    // recordedByPersonId are simple SetNull FKs (pure attribution fields,
+    // see Attendance's schema comment) and need no explicit cleanup.
+    await db.attendance.deleteMany({ where: { tenantId: tenant.id, personId: { in: staleIds } } });
     await db.teamMember.deleteMany({ where: { tenantId: tenant.id, personId: { in: staleIds } } });
     await db.roleAssignment.deleteMany({
       where: { tenantId: tenant.id, personId: { in: staleIds } },

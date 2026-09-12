@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AttendancesModule } from "./attendances/attendances.module";
 import { ClubModule } from "./club/club.module";
 import { DepartmentsModule } from "./departments/departments.module";
 import { EventsModule } from "./events/events.module";
@@ -24,6 +25,7 @@ import { VenuesModule } from "./venues/venues.module";
     FootballModule,
     VenuesModule,
     EventsModule,
+    AttendancesModule,
   ],
 })
 export class AppModule {}

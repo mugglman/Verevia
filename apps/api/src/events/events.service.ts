@@ -54,7 +54,7 @@ const EVENT_INCLUDE = {
   venue: { select: { name: true } },
 } as const;
 
-type EventWithRelations = {
+export type EventWithRelations = {
   id: string;
   departmentId: string | null;
   teamId: string | null;
@@ -86,6 +86,19 @@ export class EventsService {
     return context;
   }
 
+  /**
+   * Raw event row + relations, no access check — for callers (e.g.
+   * `AttendanceService`) that need to run their own authorization decision
+   * against the row before deciding what to do with it, exactly like
+   * `getById` does internally. Reuses the same `EVENT_INCLUDE` shape rather
+   * than a second, parallel query.
+   */
+  async findRaw(id: string): Promise<EventWithRelations | null> {
+    const context = this.requireContext();
+    const db = getTenantPrisma(context.tenantId);
+    return db.event.findUnique({ where: { id }, include: EVENT_INCLUDE });
+  }
+
   private toDto(event: EventWithRelations, canEdit: boolean): EventDto {
     return {
       id: event.id,
@@ -113,7 +126,13 @@ export class EventsService {
    * department-wide meeting) are more administrative — authorized via
    * `canOnSeason`, same as Season/FootballTournament.
    */
-  private canAccess(
+  /**
+   * Public (not just used internally): `AttendanceService` reuses this
+   * exact function for its own RBAC-read/manage checks rather than
+   * duplicating the team-vs-department branch — see ADR 0014/0015. Pure
+   * visibility change from the Phase 18 original, no behavior change.
+   */
+  canAccess(
     assignments: Awaited<ReturnType<PersonRoleAssignmentsService["load"]>>,
     event: { teamId: string | null; departmentId: string | null; team: { departmentId: string } | null },
     action: "read" | "create" | "update",
