@@ -639,3 +639,30 @@ export async function deleteEventAction(eventId: string) {
   revalidatePath("/kalender");
   redirect("/kalender");
 }
+
+/**
+ * Phase 19 — Anwesenheit. `status`/`personId` come from the RSVP button's
+ * own hidden fields (see AttendanceSection) — one form per status per
+ * person, no client-side JS needed.
+ */
+export async function setEventRsvpAction(eventId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const personId = String(formData.get("personId") ?? "");
+  const status = String(formData.get("status") ?? "");
+  await apiFetch(`/api/v1/events/${eventId}/attendances/${personId}/rsvp`, tenantId, {
+    method: "PUT",
+    body: JSON.stringify({ status }),
+  });
+  revalidatePath(`/kalender/${eventId}`);
+}
+
+export async function markEventAttendedAction(eventId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const personId = String(formData.get("personId") ?? "");
+  const attended = formData.get("attended") === "true";
+  await apiFetch(`/api/v1/events/${eventId}/attendances/${personId}/attended`, tenantId, {
+    method: "PUT",
+    body: JSON.stringify({ attended }),
+  });
+  revalidatePath(`/kalender/${eventId}`);
+}

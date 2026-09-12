@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { deleteEventAction, updateEventAction } from "@/app/actions";
+import { AttendanceSection, type AttendanceItem } from "./attendance-section";
 import { DateTimeInput } from "./datetime-input";
 import { EVENT_TYPE_LABELS, type EventOverviewType } from "./events-overview";
 
@@ -27,10 +28,12 @@ export interface EventDetailVenue {
 export interface EventDetailProps {
   event: EventDetailEvent;
   venues: EventDetailVenue[];
+  attendanceItems: AttendanceItem[];
+  canManageAttendance: boolean;
 }
 
 /** Pure presentational component — see apps/web/src/app/kalender/[id]/page.tsx. */
-export function EventDetail({ event, venues }: EventDetailProps) {
+export function EventDetail({ event, venues, attendanceItems, canManageAttendance }: EventDetailProps) {
   return (
     <main className="mx-auto max-w-3xl space-y-8 p-4 pb-16">
       <nav className="text-sm text-neutral-500">
@@ -141,6 +144,8 @@ export function EventDetail({ event, venues }: EventDetailProps) {
           </form>
         </>
       )}
+
+      <AttendanceSection eventId={event.id} items={attendanceItems} canManageAttendance={canManageAttendance} />
     </main>
   );
 }

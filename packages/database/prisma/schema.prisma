@@ -265,6 +265,15 @@ enum EventType {
   OTHER
 }
 
+/// Zu-/Absagestatus einer `Attendance` (Phase 19) — bewusst kein Boolean:
+/// PENDING (noch keine Rückmeldung) ist ein eigener, sichtbarer Zustand,
+/// keine Abwesenheit von Information.
+enum RsvpStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 // ---------------------------------------------------------------------------
 // better-auth-eigene Modelle (generiert via `npx @better-auth/cli generate`,
 // siehe packages/auth/src/index.ts). `User` ist um das domänenspezifische
@@ -395,6 +404,7 @@ model Tenant {
   tournamentGroups       TournamentGroup[]
   tournamentMatchSlots   TournamentMatchSlot[]
   events                 Event[]
+  attendances            Attendance[]
 
   @@map("tenant")
 }
@@ -480,6 +490,9 @@ model Person {
   verifiedRelationships   PersonRelationship[] @relation("RelationshipVerifiedBy")
   teamMemberships         TeamMember[]         @relation("PersonTeamMemberships")
   accountInvitations      AccountInvitation[]
+  attendances             Attendance[]         @relation("AttendanceOfPerson")
+  attendanceResponses     Attendance[]         @relation("AttendanceRespondedBy")
+  attendanceRecordings    Attendance[]         @relation("AttendanceRecordedBy")
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -1329,10 +1342,70 @@ model Event {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  attendances Attendance[]
+
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@index([departmentId])
   @@index([teamId])
   @@index([seasonId])
   @@index([venueId])
   @@map("event")
+}
+
+/// Zu-/Absage sowie tatsächliche Anwesenheit einer `Person` zu einem
+/// `Event` (Phase 19) — siehe docs/database/Database.md, Entität
+/// "Attendance (Anwesenheit)", und [ADR 0015](../../../docs/architecture/adr/0015-attendance-self-service-authorization.md)
+/// für die Autorisierungs-Begründung.
+///
+/// Zwei fachlich unterschiedliche, aber zusammengehörige Zustände in EINER
+/// Zeile statt zwei Modellen: `rsvpStatus` (vorab, von der Person selbst
+/// oder ihrem verifizierten Erziehungsberechtigten gesetzt) und `attended`
+/// (im Nachhinein, ausschließlich von einer Person mit Verwaltungsrecht auf
+/// das Event gesetzt — dieselbe Rolle, die das Event selbst bearbeiten
+/// darf, siehe ADR 0014). `attended: null` bedeutet "noch nicht erfasst",
+/// nicht "nicht anwesend" — bewusst kein Boolean-Default.
+///
+/// `respondedByPersonId`/`recordedByPersonId` sind bewusst EINFACHE
+/// (nicht-composite) FKs — reine Attributionsfelder ("wer hat das
+/// eingetragen"), gleiche Begründung wie `RoleAssignment.grantedByPersonId`
+/// (siehe dortiger Kommentar): ein Composite-FK würde bei `ON DELETE
+/// SetNull` versuchen, auch `tenantId` zu leeren, was einen
+/// Constraint-Verstoß erzeugen würde.
+///
+/// `@@unique([eventId, personId])`: höchstens eine Attendance-Zeile pro
+/// Person und Event — ein wiederholtes Setzen der RSVP ist ein Update
+/// derselben Zeile (Upsert), nie eine neue Zeile. Das macht ein
+/// Mehrfach-Absenden (Doppelklick, gleichzeitige Anfragen) von Natur aus
+/// idempotent, ohne zusätzliches Locking.
+model Attendance {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  eventId String
+  event   Event  @relation(fields: [tenantId, eventId], references: [tenantId, id], onDelete: Restrict)
+
+  personId String
+  person   Person @relation("AttendanceOfPerson", fields: [tenantId, personId], references: [tenantId, id], onDelete: Restrict)
+
+  rsvpStatus RsvpStatus @default(PENDING)
+  rsvpNote   String?
+
+  respondedByPersonId String?
+  respondedByPerson   Person? @relation("AttendanceRespondedBy", fields: [respondedByPersonId], references: [id], onDelete: SetNull)
+
+  attended Boolean?
+
+  recordedByPersonId String?
+  recordedByPerson   Person? @relation("AttendanceRecordedBy", fields: [recordedByPersonId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, personId])
+  @@index([tenantId])
+  @@index([eventId])
+  @@index([personId])
+  @@map("attendance")
 }
