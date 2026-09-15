@@ -639,3 +639,67 @@ export async function deleteEventAction(eventId: string) {
   revalidatePath("/kalender");
   redirect("/kalender");
 }
+
+/**
+ * Phase 20 — Aufgaben. `scope` is a single combined value from the create
+ * form's "Für wen"-select (`team:<id>` or `person:<id>`, see
+ * TaskCreateForm) — parsed here into exactly one of teamId/personId,
+ * matching the API's task_assignee_xor rule.
+ */
+export async function createTaskAction(formData: FormData) {
+  const tenantId = await requireTenantId();
+  const scope = String(formData.get("scope") ?? "");
+  const [scopeKind, scopeId] = scope.split(":");
+  const title = String(formData.get("title") ?? "");
+  const dueAt = String(formData.get("dueAt") ?? "");
+  const description = String(formData.get("description") ?? "");
+  await apiFetch("/api/v1/tasks", tenantId, {
+    method: "POST",
+    body: JSON.stringify({
+      ...(scopeKind === "team" ? { teamId: scopeId } : {}),
+      ...(scopeKind === "person" ? { personId: scopeId } : {}),
+      title,
+      ...(dueAt ? { dueAt } : {}),
+      ...(description ? { description } : {}),
+    }),
+  });
+  revalidatePath("/aufgaben");
+  // Same reasoning as createEventAction: the create form lives on its own
+  // dedicated page, not inline on the list.
+  redirect("/aufgaben");
+}
+
+export async function updateTaskAction(taskId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const title = String(formData.get("title") ?? "");
+  const dueAt = String(formData.get("dueAt") ?? "");
+  const description = String(formData.get("description") ?? "");
+  await apiFetch(`/api/v1/tasks/${taskId}`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({
+      title,
+      dueAt: dueAt || undefined,
+      description: description || undefined,
+    }),
+  });
+  revalidatePath(`/aufgaben/${taskId}`);
+  revalidatePath("/aufgaben");
+}
+
+export async function setTaskStatusAction(taskId: string, formData: FormData) {
+  const tenantId = await requireTenantId();
+  const status = String(formData.get("status") ?? "");
+  await apiFetch(`/api/v1/tasks/${taskId}/status`, tenantId, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+  revalidatePath(`/aufgaben/${taskId}`);
+  revalidatePath("/aufgaben");
+}
+
+export async function deleteTaskAction(taskId: string) {
+  const tenantId = await requireTenantId();
+  await apiFetch(`/api/v1/tasks/${taskId}`, tenantId, { method: "DELETE" });
+  revalidatePath("/aufgaben");
+  redirect("/aufgaben");
+}

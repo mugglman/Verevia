@@ -265,6 +265,13 @@ enum EventType {
   OTHER
 }
 
+/// Status einer `Task` (Phase 20) — bewusst nur zwei Werte: eine Aufgabe ist
+/// entweder offen oder erledigt, kein Freigabe-/Review-Workflow im MVP.
+enum TaskStatus {
+  OPEN
+  DONE
+}
+
 // ---------------------------------------------------------------------------
 // better-auth-eigene Modelle (generiert via `npx @better-auth/cli generate`,
 // siehe packages/auth/src/index.ts). `User` ist um das domänenspezifische
@@ -395,6 +402,7 @@ model Tenant {
   tournamentGroups       TournamentGroup[]
   tournamentMatchSlots   TournamentMatchSlot[]
   events                 Event[]
+  tasks                  Task[]
 
   @@map("tenant")
 }
@@ -449,6 +457,7 @@ model Team {
   teamMembers     TeamMember[]
   teamSeasons     TeamSeason[]
   events          Event[]
+  tasks           Task[]
 
   @@unique([departmentId, name])
   @@unique([tenantId, id])
@@ -480,6 +489,7 @@ model Person {
   verifiedRelationships   PersonRelationship[] @relation("RelationshipVerifiedBy")
   teamMemberships         TeamMember[]         @relation("PersonTeamMemberships")
   accountInvitations      AccountInvitation[]
+  assignedTasks           Task[]               @relation("TaskAssignee")
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -1335,4 +1345,45 @@ model Event {
   @@index([seasonId])
   @@index([venueId])
   @@map("event")
+}
+
+/// Eine einer Mannschaft ODER Person zugeordnete Aufgabe (Phase 20) — siehe
+/// docs/database/Database.md, Entität "Task (Aufgabe)", und
+/// [ADR 0016](../../../docs/architecture/adr/0016-task-authorization.md) für
+/// die vollständige Autorisierungs-Begründung.
+///
+/// Gehört zu genau einem `Team` ODER genau einer `Person` (nie beides, nie
+/// keines, per CHECK-Constraint erzwungen — gleiches XOR-Muster wie
+/// `event_scope_xor`, ADR 0014/0008). Eine team-gebundene Aufgabe ist eine
+/// gemeinsame Aufgabe der ganzen Mannschaft (z. B. "Trikots waschen"); eine
+/// personen-gebundene Aufgabe ist eine individuelle Zuweisung (z. B. "Erste-
+/// Hilfe-Set mitbringen").
+///
+/// Bewusst KEIN eigenes `assignedByPersonId`-Attributionsfeld — anders als
+/// `Attendance` gibt es hier keine mehrdeutige "wer hat das eingetragen"-
+/// Frage (die Aufgabe existiert nur, weil sie jemand mit Verwaltungsrecht
+/// angelegt hat, das ist bereits durch die Autorisierungsprüfung selbst
+/// belegt, nicht durch ein zusätzliches Feld).
+model Task {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  teamId String?
+  team   Team?   @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Restrict)
+
+  personId String?
+  person   Person? @relation("TaskAssignee", fields: [tenantId, personId], references: [tenantId, id], onDelete: Restrict)
+
+  title       String
+  description String?
+  dueAt       DateTime?
+  status      TaskStatus @default(OPEN)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([tenantId])
+  @@index([teamId])
+  @@index([personId])
+  @@map("task")
 }

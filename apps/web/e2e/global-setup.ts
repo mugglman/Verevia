@@ -115,6 +115,11 @@ export default async function globalSetup(): Promise<void> {
       select: { userId: true },
     });
     const staleUserIds = staleMemberships.map((m) => m.userId);
+    // Phase 20: a stale Person may still be the SUBJECT of a Task row
+    // (personId is a Restrict FK) from a previous, possibly-failed run of
+    // e2e/tasks.spec.ts — must go before the Person itself, same
+    // FK-respecting order as everything else here.
+    await db.task.deleteMany({ where: { tenantId: tenant.id, personId: { in: staleIds } } });
     await db.teamMember.deleteMany({ where: { tenantId: tenant.id, personId: { in: staleIds } } });
     await db.roleAssignment.deleteMany({
       where: { tenantId: tenant.id, personId: { in: staleIds } },
