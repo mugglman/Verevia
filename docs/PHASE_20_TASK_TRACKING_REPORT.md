@@ -119,7 +119,7 @@ Keine neuen. `Task` bündelt bewusst nur das Nötigste (`title`, `description?`,
 
 - Branch: `feat/task-tracking`
 - Basis-Commit: `d4a3865` (main, Phase-18-Merge — Phase 19/PR #23 bewusst nicht enthalten)
-- Endcommit: siehe PR
+- Endcommit: `0021ca3`
 - PR: siehe unten
 - **Gemergt: NEIN**
 - PR #23 (Phase 19): unverändert OPEN, nicht gemergt, nicht modifiziert.
