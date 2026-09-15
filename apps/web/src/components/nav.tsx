@@ -4,14 +4,15 @@ import Link from "next/link";
  * Minimal navigation for this vertical slice only — Verein (Abteilungen)
  * as the entry point (teams reached by drilling down through a
  * department), Personen (Phase 4), Meine Kinder (Phase 6, guardian
- * ReBAC access), Fußball (Phase 9, season foundation), and Kalender
- * (Phase 18, team-/department-scoped events). All links are always shown;
- * each page itself enforces its own access rule (403/empty-state message)
- * rather than hiding the link, since Nav has no access to the caller's
- * permissions. Turniere (Phase 11) is reached via the Fußball overview
- * page, not a top-level entry, same as Saisons. No nav items for features
- * that don't exist yet (Anwesenheit, Aufgaben, Push-Mitteilungen, Chat,
- * Finanzen, Tennis, Stockschützen, Radsport).
+ * ReBAC access), Fußball (Phase 9, season foundation), Kalender
+ * (Phase 18, team-/department-scoped events), and Aufgaben (Phase 20,
+ * team-/person-scoped tasks). All links are always shown; each page itself
+ * enforces its own access rule (403/empty-state message) rather than
+ * hiding the link, since Nav has no access to the caller's permissions.
+ * Turniere (Phase 11) is reached via the Fußball overview page, not a
+ * top-level entry, same as Saisons. No nav items for features that don't
+ * exist yet (Anwesenheit, Push-Mitteilungen, Chat, Finanzen, Tennis,
+ * Stockschützen, Radsport).
  */
 export function Nav() {
   return (
@@ -52,6 +53,12 @@ export function Nav() {
           className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
         >
           Kalender
+        </Link>
+        <Link
+          href="/aufgaben"
+          className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
+        >
+          Aufgaben
         </Link>
       </div>
     </nav>

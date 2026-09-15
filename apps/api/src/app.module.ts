@@ -8,6 +8,7 @@ import { InvitationsModule } from "./invitations/invitations.module";
 import { PersonsModule } from "./persons/persons.module";
 import { RelationshipsModule } from "./relationships/relationships.module";
 import { SeasonsModule } from "./seasons/seasons.module";
+import { TasksModule } from "./tasks/tasks.module";
 import { TeamsModule } from "./teams/teams.module";
 import { VenuesModule } from "./venues/venues.module";
 
@@ -24,6 +25,7 @@ import { VenuesModule } from "./venues/venues.module";
     FootballModule,
     VenuesModule,
     EventsModule,
+    TasksModule,
   ],
 })
 export class AppModule {}
