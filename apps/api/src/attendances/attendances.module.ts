@@ -8,5 +8,6 @@ import { AttendancesService } from "./attendances.service";
   imports: [AuthorizationModule, EventsModule],
   controllers: [AttendancesController],
   providers: [AttendancesService],
+  exports: [AttendancesService],
 })
 export class AttendancesModule {}
