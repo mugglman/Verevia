@@ -27,3 +27,4 @@ Jede wesentliche architektonische Entscheidung wird als eigenes ADR-Dokument fes
 - [0012 – Gruppentabellen sind abgeleitete Daten; technische Deterministik entscheidet nie einen sportlichen Gleichstand](./0012-group-standings-derived-technical-tiebreak.md) — ACCEPTED
 - [0013 – Öffentliche Turnierseite: Autorisierungsgrenze und Sichtbarkeitsregel](./0013-public-tournament-page-auth-boundary.md) — ACCEPTED
 - [0014 – Kalendertermine: Autorisierung folgt der Scope-Art (Team vs. Department)](./0014-event-dual-scope-authorization.md) — ACCEPTED
+- [0015 – Anwesenheit: Self-Service-Zugriffspfad neben RBAC, kein neuer Authorization-Mechanismus](./0015-attendance-self-service-authorization.md) — ACCEPTED

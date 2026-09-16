@@ -9,9 +9,11 @@ import Link from "next/link";
  * each page itself enforces its own access rule (403/empty-state message)
  * rather than hiding the link, since Nav has no access to the caller's
  * permissions. Turniere (Phase 11) is reached via the Fußball overview
- * page, not a top-level entry, same as Saisons. No nav items for features
- * that don't exist yet (Anwesenheit, Aufgaben, Push-Mitteilungen, Chat,
- * Finanzen, Tennis, Stockschützen, Radsport).
+ * page, not a top-level entry, same as Saisons. Statistik (Phase 21,
+ * team-/saisonbezogene Kennzahlen) as ein weiterer Eintrag. No nav items
+ * for features that don't exist yet (Anwesenheit als eigener Menüpunkt —
+ * erreichbar über den jeweiligen Termin in Kalender —, Aufgaben,
+ * Push-Mitteilungen, Chat, Finanzen, Tennis, Stockschützen, Radsport).
  */
 export function Nav() {
   return (
@@ -52,6 +54,12 @@ export function Nav() {
           className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
         >
           Kalender
+        </Link>
+        <Link
+          href="/statistik"
+          className="text-sm text-neutral-600 hover:text-[var(--color-primary)] dark:text-neutral-300"
+        >
+          Statistik
         </Link>
       </div>
     </nav>
